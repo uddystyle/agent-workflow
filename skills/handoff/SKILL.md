@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: いまの会話を、次のセッションが読んで続けられる1枚に畳む。context が尽きかけたとき、区切りで別のセッションに渡すとき、明日の自分に渡すときに使う。
+description: いまの会話を、次のセッションが読んで続けられる1枚に畳む。context が尽きかけたとき、区切りで別のセッションへ渡すときに使う。
 disable-model-invocation: true
 ---
 

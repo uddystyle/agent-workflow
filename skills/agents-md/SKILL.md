@@ -1,6 +1,6 @@
 ---
 name: agents-md
-description: この repo の AGENTS.md を環境から作り直す。新しい repo に入ったとき、AGENTS.md が無いとき、古くなったとき、内容が実態と食い違っていると気づいたときに使う。
+description: AGENTS.md を環境から作り直す。AGENTS.md がまだ無いとき、書いてあることが実態と食い違っていると気づいたときに使う。
 ---
 
 # AGENTS.md を生成する
