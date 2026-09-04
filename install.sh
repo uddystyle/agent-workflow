@@ -1,56 +1,77 @@
 #!/usr/bin/env bash
-# skills/ の各スキルを ~/.claude/skills/ へ、home/ の設定を ~ へ張る。冪等。
+# skills/ を正本（~/.agents/skills/）へ、正本を各エージェントへ、home/ の設定を ~ へ張る。冪等。
 #
 # 実体のファイルやディレクトリが既にある場合は上書きせず止まる。
 # 消してよいかは人が判断する。
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-target="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
+agents="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 stow_target="${STOW_TARGET:-$HOME}"
 
-mkdir -p "$target"
+# スキルを読むエージェントの置き場。存在するものにだけ配る。
+consumers=(
+	"${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
+	"${PI_SKILLS_DIR:-$HOME/.pi/agent/skills}"
+)
 
 linked=0
 skipped=0
 blocked=0
 
-for src in "$repo"/skills/*/; do
-	[ -d "$src" ] || continue
-	name=$(basename "$src")
-	dest="$target/$name"
+# 1本張る。既に正しければ数えない。他人のものは奪わない。
+# $1 張り先  $2 指す先  $3 報告に使う名前
+link_one() {
+	dest=$1
+	want=$2
+	label=$3
 
 	if [ -L "$dest" ]; then
 		current=$(readlink "$dest")
-		if [ "$current" = "${src%/}" ]; then
-			printf 'OK   %s は張り済み\n' "$name"
+		if [ "$current" = "$want" ]; then
+			printf 'OK   %s は張り済み\n' "$label"
 			skipped=$((skipped + 1))
-			continue
+			return 0
 		fi
 		case "$current" in
-		"$repo"/*)
-			printf 'MOVE %s は同じ repo の別の場所を指している。張り替える\n' "$name"
+		"$repo"/* | "$agents"/*)
+			printf 'MOVE %s は古い場所を指している。張り替える\n' "$label"
 			rm "$dest"
 			;;
 		*)
 			printf 'STOP %s は別管理の symlink である (-> %s)\n' "$dest" "$current" >&2
 			printf '     別の名前を使うか、その管理元で消してから入れ直す\n' >&2
 			blocked=$((blocked + 1))
-			continue
+			return 0
 			;;
 		esac
 	elif [ -e "$dest" ]; then
-		printf 'STOP %s は実体のディレクトリである。中身を %s へ移してから消す\n' "$dest" "$src" >&2
+		printf 'STOP %s は実体である。中身を %s へ移してから消す\n' "$dest" "$want" >&2
 		blocked=$((blocked + 1))
-		continue
+		return 0
 	fi
 
-	ln -s "${src%/}" "$dest"
-	printf 'LINK %s\n' "$name"
+	ln -s "$want" "$dest"
+	printf 'LINK %s\n' "$label"
 	linked=$((linked + 1))
+}
+
+# 1. repo のスキルを正本へ張る。
+#    ディレクトリごと張るので、repo にファイルを足せば張り直さずに届く。
+mkdir -p "$agents"
+for src in "$repo"/skills/*/; do
+	[ -d "$src" ] || continue
+	name=$(basename "$src")
+	link_one "$agents/$name" "${src%/}" "$name（正本）"
+
+	# 2. 正本を各エージェントへ配る。置き場が無いエージェントには配らない。
+	for dir in "${consumers[@]}"; do
+		[ -d "$dir" ] || continue
+		link_one "$dir/$name" "$agents/$name" "$name -> $(basename "$(dirname "$dir")")"
+	done
 done
 
-# home/ の設定を stow で $HOME へ張る。
+# 3. home/ の設定を stow で $HOME へ張る。
 #
 # 🔴 --no-folding を外さない。張り先のディレクトリが無いとき、stow は
 # ディレクトリごと1本の symlink にする（folding）。~/.config/herdr/ には
@@ -86,6 +107,7 @@ if [ -d "$repo/home" ]; then
 fi
 
 printf '\n張った %s / 済み %s / 止めた %s\n' "$linked" "$skipped" "$blocked"
-printf 'スキル: %s\n' "$target"
+printf '正本:   %s\n' "$agents"
+printf '配り先: %s\n' "${consumers[*]}"
 printf '設定:   %s\n' "$stow_target"
 exit "$blocked"
