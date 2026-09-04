@@ -62,12 +62,15 @@ mkdir -p "$agents"
 for src in "$repo"/skills/*/; do
 	[ -d "$src" ] || continue
 	name=$(basename "$src")
-	link_one "$agents/$name" "${src%/}" "$name（正本）"
+	# 変数名は必ず括る。直後に多バイト文字が来ると、bash が名前の一部として読む。
+	link_one "$agents/$name" "${src%/}" "${name}（正本）"
 
 	# 2. 正本を各エージェントへ配る。置き場が無いエージェントには配らない。
 	for dir in "${consumers[@]}"; do
 		[ -d "$dir" ] || continue
-		link_one "$dir/$name" "$agents/$name" "$name -> $(basename "$(dirname "$dir")")"
+		# 配り先の呼び名は ~ の直下の名前で表す（~/.claude/skills なら .claude）。
+		rel=${dir#"$HOME"/}
+		link_one "$dir/$name" "$agents/$name" "${name} -> ${rel%%/*}"
 	done
 done
 
