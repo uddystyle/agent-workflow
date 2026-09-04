@@ -46,6 +46,14 @@ brew install stow     # 設定を張るのに要る
 
 `home/` は `~` と同じ形の木にしておくだけでよい。設置の手続きは書かない——stow が形から決める。
 
+## 検査
+
+```sh
+./tests/install.sh
+```
+
+一時ディレクトリだけを使い、`install.sh` の受入条件を確認する。
+
 ## 使い方
 
 Ghostty でタブを開き、対象の repo で `claude` を起動する。
