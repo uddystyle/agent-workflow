@@ -1,13 +1,13 @@
 # agent-workflow
 
-**Generated:** 2026-09-04T13:20:45Z
-**Commit:** a38071e
+**Generated:** 2026-09-04T13:39:34Z
+**Commit:** d4785fa
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
 
 ```sh
-git log a38071e..HEAD -- install.sh skills/ home/
+git log d4785fa..HEAD -- install.sh skills/ home/
 ```
 
 何も出なければ、印が古くても内容は正しい。出たら、その分だけ疑う。
@@ -23,23 +23,27 @@ git log a38071e..HEAD -- install.sh skills/ home/
 
 ⚠️ **自動検査は無い。** `install.sh` を変えたら手で確かめる。
 
-🔴 **張り先を両方とも仮の場所に向けて実行する。** 素で回すと本物の `~/.claude/skills/` と `~` を書き換える。
+🔴 **張り先を全部、仮の場所に向けて実行する。** 素で回すと本物の正本・配り先・`~` を書き換える。
 
 ```sh
-CLAUDE_SKILLS_DIR=$(mktemp -d) STOW_TARGET=$(mktemp -d) ./install.sh
+AGENTS_SKILLS_DIR=$(mktemp -d) CLAUDE_SKILLS_DIR=$(mktemp -d) \
+PI_SKILLS_DIR=$(mktemp -d) STOW_TARGET=$(mktemp -d) ./install.sh
 ```
 
 | #   | 場面                            | 期待                          |
 | --- | ------------------------------- | ----------------------------- |
-| 1   | 何も無いところへ                | 張る                          |
+| 1   | 何も無いところへ                | 正本へ張り、配り先へも張る    |
 | 2   | 同じところへもう一度            | 「済み」。張り直さない        |
 | 3   | 実体のディレクトリがある        | 止まる                        |
-| 4   | この repo の別の場所を指す link | 張り替える                    |
+| 4   | 古い場所を指す link             | 張り替える                    |
 | 5   | **別管理の symlink がある**     | **止まる**                    |
 | 6   | `stow` が無い                   | 設定だけ止まる。スキルは張る  |
 | 7   | 設定の張り先に何も無い          | **ファイル単位**で張る        |
 | 8   | 設定をもう一度                  | 「済み」。数えない            |
 | 9   | 実体の設定ファイルがある        | 止まる。既存を消さない        |
+
+🔴 **4 は移行そのものである。** 配り先が repo を直接指していた古い形から、
+正本を指す形へ張り替わり、`SKILL.md` までたどれることまで見る。
 
 `blocked` の数が終了コードになる。1件でも止まれば非ゼロで終わる。
 
@@ -62,7 +66,8 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
 
 ## How to navigate this codebase
 
-- `skills/<name>/SKILL.md`: 動詞ごとのスキル本体。`install.sh` が `~/.claude/skills/<name>` へ symlink する
+- `skills/<name>/SKILL.md`: 動詞ごとのスキル本体。`install.sh` が**正本**（`~/.agents/skills/<name>`）へ
+  ディレクトリごと symlink し、正本を各エージェントの置き場へ配る（`DECISIONS.md` D-13）
 - `skills/<name>/` の他のファイル: そのスキルだけが読む参照。ポインタ経由で開く
 - `home/`: マシンの設定。**`~` と同じ形の木**にする。stow がその形のまま張るので、
   設置の手続きはどこにも書かない——**置いた場所が仕様である**
@@ -81,19 +86,19 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
 
 ## Boundaries
 
-- `~/.claude/skills/`: **3つの管理系が同居している。**
-  この repo の symlink、`~/.agents/skills/` からの symlink（別管理）、実体のディレクトリ。
-  🔴 **スキルの名前は、この置き場ぜんぶで一意でなければならない。**
+- `~/.agents/skills/`（正本）と各エージェントの置き場は、**どちらも管理系が同居している。**
+  この repo が張った symlink、別の入れ方で入った実体のディレクトリ、他系統の symlink。
+  🔴 **スキルの名前は、正本と配り先ぜんぶで一意でなければならない。**
   `install.sh` は他系統の名前を奪わずに止まるが、**止まった時点で入らない**ので、
   名前を決める前に見る:
 
   ```sh
-  ls ~/.claude/skills/ | grep -x '<name>'
+  ls ~/.agents/skills/ ~/.claude/skills/ ~/.pi/agent/skills/ 2>/dev/null | sort -u | grep -x '<name>'
   ```
 
-- `~/.claude/skills/<name>` を実体のディレクトリで置き換えると、以後 repo の変更が届かなくなる
+- 正本や配り先を実体のディレクトリで置き換えると、以後 repo の変更が届かなくなる
   （`install.sh` はそれを見つけて止まる）。**編集は repo 側の `skills/<name>/` に対して行う**——
-  symlink 経由なので即座に反映され、張り直しは要らない
+  ディレクトリごとの symlink なので即座に反映され、張り直しは要らない
 
 - `~/.claude/settings.json`: **道具が自分で書き込むフックが同居する。**
   誰が何を持っているかは、その場で引く:
@@ -124,7 +129,10 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
 
 ## Dependencies
 
+- Depends on: **正本の置き場**（`~/.agents/skills/`）—— この repo の管理外にあり、
+  他のスキル群が実体のディレクトリで同居している。ここへ配ることで、複数のエージェントが同じスキルを読む
 - Depends on: Claude Code —— `~/.claude/skills/` からスキルを読み、`~/.claude/settings.json` の `hooks` からガードレールを呼ぶ
+- Depends on: Pi —— `~/.pi/agent/skills/` からスキルを読む。置き場が無ければ配らない
 
 ## Notes
 
