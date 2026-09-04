@@ -1,13 +1,13 @@
 # agent-workflow
 
-**Generated:** 2026-09-04T19:20:44Z
-**Commit:** 0642de1
+**Generated:** 2026-09-04T19:44:45Z
+**Commit:** 2618e11
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
 
 ```sh
-git log 0642de1..HEAD -- install.sh skills/ home/ tests/
+git log 2618e11..HEAD -- install.sh skills/ home/ tests/
 ```
 
 何も出なければ、印が古くても内容は正しい。出たら、その分だけ疑う。
@@ -16,6 +16,7 @@ git log 0642de1..HEAD -- install.sh skills/ home/ tests/
 
 - Runtime: bash と Markdown。ビルドしない
 - Test: `./tests/install.sh`（道具が正しいか。隔離した砂場で確かめる）
+- Test: `./tests/secret-scan.sh`（ガードレールが止めるべきものを止めるか）
 - Doctor: `./tests/doctor.sh`（現場が想定どおりか。**読むだけで何も書かない**）
 - Lint: 未定義
 - Build: 未定義
