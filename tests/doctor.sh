@@ -153,5 +153,18 @@ else
 	skip "origin/main（まだ無い）"
 fi
 
+# 7. 委譲の拡張が入っているか（D-17）
+#    ⚠️ これは repo が張るものではない。道具に付属する例を指す。
+#    観点の定義だけでは動かないので、入っていなければ言う。
+if [ -d "$HOME/.pi/agent" ]; then
+	if [ -e "$HOME/.pi/agent/extensions/subagent/index.ts" ]; then
+		ok "委譲の拡張が入っている"
+	else
+		warn "委譲の拡張が入っていない。観点の定義だけでは動かない（D-17）"
+	fi
+else
+	skip "pi の置き場（無い）"
+fi
+
 printf '\n通った %s / 気になる %s / 壊れている %s\n' "$ok_count" "$warn_count" "$bad_count"
 exit $((bad_count > 0 ? 1 : 0))

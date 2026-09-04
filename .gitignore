@@ -13,6 +13,8 @@
 # 🔴 道具は自分の置き場に認証情報・セッション・ログを書く。
 #    まとめて無視し、こちらが書いたファイルだけを `!` で戻す。
 home/.pi/agent/*
+!home/.pi/agent/agents/
+!home/.pi/agent/agents/**
 !home/.pi/agent/extensions/
 !home/.pi/agent/extensions/**
 !home/.pi/agent/package.json

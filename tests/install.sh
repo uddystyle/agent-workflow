@@ -51,9 +51,19 @@ case_clean_and_repeat() {
 		expect_link "$d/claude/$name" "$d/agents/$name"
 		expect_link "$d/pi/$name" "$d/agents/$name"
 	done
-	[ -d "$d/home/.config" ] && [ ! -L "$d/home/.config" ] || fail '.config は実体のディレクトリではない'
-	[ -d "$d/home/.config/herdr" ] && [ ! -L "$d/home/.config/herdr" ] || fail '.config/herdr は実体のディレクトリではない'
-	expect_resolves_to "$d/home/.config/herdr/config.toml" "$repo/home/.config/herdr/config.toml"
+	# 🔴 パスを直書きしない。home/ にあるディレクトリ全部について、
+	# 張り先が実体であることを見る——道具はそこに認証情報や状態を書く。
+	# 畳まれていたら、それが repo の中に作られる。
+	while IFS= read -r dir; do
+		rel=${dir#"$repo"/home/}
+		[ -d "$d/home/$rel" ] || fail "$rel が張り先に無い"
+		[ ! -L "$d/home/$rel" ] || fail "$rel が symlink になっている（畳まれた）"
+	done < <(find "$repo/home" -mindepth 1 -type d)
+
+	while IFS= read -r f; do
+		rel=${f#"$repo"/home/}
+		expect_resolves_to "$d/home/$rel" "$f"
+	done < <(find "$repo/home" -type f)
 	# 🔴 件数を直書きしない。スキルを1本足すたびに落ちる。
 	# 見るのは不変量である——初回は既存が無いので「済み」と「止めた」が 0、
 	# 再実行は何も張らないので「張った」が 0。張った数そのものは、
