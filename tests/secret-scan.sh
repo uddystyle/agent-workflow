@@ -38,7 +38,8 @@ P_STRIPE='sk_live'
 P_JWT='eyJ'
 FAKE_STRIPE="${P_STRIPE}_51AbCdEfGhIjKlMnOpQrStUvWx"
 FAKE_JWT="${P_JWT}hbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9AbCdEfGhIjKl"
-FAKE_VALUE='abcdefghijklmnopqrstuvwx'
+ASSIGN_UNDER='abcdefghijklmnopqrstuvwxyz0123456789abc'  # 39 文字
+ASSIGN_EXACT='abcdefghijklmnopqrstuvwxyz0123456789abcd' # 40 文字
 BOUND_UNDER="${P_STRIPE}_AbCdEfGhIjKlMnOpQrStUvW"
 BOUND_EXACT="${P_STRIPE}_AbCdEfGhIjKlMnOpQrStUvWx"
 
@@ -49,19 +50,25 @@ expect_allow '代入でない表' '{"tool_name":"Write","tool_input":{"content":
 expect_allow '値が短い代入' '{"tool_name":"Write","tool_input":{"content":"STRIPE_SECRET_KEY: 設定済み"}}'
 expect_allow '前置詞に似た語' '{"tool_name":"Write","tool_input":{"content":"re_export した"}}'
 expect_allow '空の入力' '{"tool_name":"Write","tool_input":{"content":""}}'
+# 🔴 3文字の前置詞を戻させない。`re_` を持っていたとき、この識別子が止められた。
+expect_allow '語の途中に前置詞を含む識別子' '{"tool_name":"Write","tool_input":{"content":"create unique index score_mutations_client_mutation_id_key"}}'
+# テストの偽物や穴埋めは通す。下限 20 のとき、これが止められていた。
+expect_allow 'テストの偽物' "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"SUPABASE_SERVICE_ROLE_KEY: 'service_role_dummy'\"}}"
 
 # 🔴 下限が効いていることを確かめる。
 # 前置詞だけの文章は「後続0文字」なので、下限を1に緩めても通ってしまう。
 # 下限のすぐ下の長さで試さないと、緩められたことに気づけない。
 expect_allow '下限の1つ下' "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"${BOUND_UNDER}\"}}"
 expect_deny '下限ちょうど' "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"${BOUND_EXACT}\"}}" "${BOUND_EXACT##*_}"
+# 代入の側も同じように挟む。こちらは 20 から 40 へ上げた——下げ戻されたら落ちる。
+expect_allow '代入の下限の1つ下' "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"SUPABASE_SERVICE_ROLE_KEY=${ASSIGN_UNDER}\"}}"
 
 # --- 止めるべきもの ---
 expect_deny 'Write に鍵' "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"KEY=$FAKE_STRIPE\"}}" "$FAKE_STRIPE"
 expect_deny 'Edit に鍵' "{\"tool_name\":\"Edit\",\"tool_input\":{\"new_string\":\"$FAKE_STRIPE\"}}" "$FAKE_STRIPE"
 expect_deny 'Bash に鍵' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo $FAKE_STRIPE\"}}" "$FAKE_STRIPE"
 expect_deny 'JWT' "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"$FAKE_JWT\"}}" "$FAKE_JWT"
-expect_deny '名前で捕まえる' "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"SUPABASE_SERVICE_ROLE_KEY=${FAKE_VALUE}\"}}" "$FAKE_VALUE"
+expect_deny '名前で捕まえる' "{\"tool_name\":\"Write\",\"tool_input\":{\"content\":\"SUPABASE_SERVICE_ROLE_KEY=${ASSIGN_EXACT}\"}}" "$ASSIGN_EXACT"
 
 # --- 走査できないときは止める（fail-closed）---
 out=$(printf 'これは JSON ではない' | bash "$hook" 2>&1)
