@@ -42,20 +42,28 @@ expect_resolves_to() {
 
 # 受入条件 1・2・7・8: 初回と再実行、スキルと設定の両方を確かめる。
 case_clean_and_repeat() {
-	local d="$tmp/clean" first second
+	local d="$tmp/clean" first second src name
 	first=$(run_install "$d" bash)
-	expect_link "$d/agents/agents-md" "$repo/skills/agents-md"
-	expect_link "$d/claude/agents-md" "$d/agents/agents-md"
-	expect_link "$d/pi/agents-md" "$d/agents/agents-md"
+	# スキル名も直書きしない。repo にあるもの全部について経路を見る。
+	for src in "$repo"/skills/*/; do
+		name=$(basename "$src")
+		expect_link "$d/agents/$name" "${src%/}"
+		expect_link "$d/claude/$name" "$d/agents/$name"
+		expect_link "$d/pi/$name" "$d/agents/$name"
+	done
 	[ -d "$d/home/.config" ] && [ ! -L "$d/home/.config" ] || fail '.config は実体のディレクトリではない'
 	[ -d "$d/home/.config/herdr" ] && [ ! -L "$d/home/.config/herdr" ] || fail '.config/herdr は実体のディレクトリではない'
 	expect_resolves_to "$d/home/.config/herdr/config.toml" "$repo/home/.config/herdr/config.toml"
-	[[ $first == *'張った 4 / 済み 0 / 止めた 0'* ]] || fail '初回の報告が違う'
+	# 🔴 件数を直書きしない。スキルを1本足すたびに落ちる。
+	# 見るのは不変量である——初回は既存が無いので「済み」と「止めた」が 0、
+	# 再実行は何も張らないので「張った」が 0。張った数そのものは、
+	# 上の expect_link が経路として確かめている。
+	[[ $first == *'済み 0 / 止めた 0'* ]] || fail '初回に既存扱いか停止があった'
+	[[ $first != *'張った 0 '* ]] || fail '初回に何も張っていない'
 
 	second=$(run_install "$d" bash)
-	[[ $second == *'張った 0 / 済み 4 / 止めた 0'* ]] || fail '再実行で張り直した'
-	# 初回は「スキルを張る」と「設定をファイル単位で張る」の2件、
-	# 再実行もそれぞれ1件として数える。
+	[[ $second == *'張った 0 '* ]] || fail '再実行で張り直した'
+	[[ $second == *'止めた 0'* ]] || fail '再実行で止まった'
 	passed=$((passed + 4))
 }
 
