@@ -73,7 +73,11 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
 
   ```sh
   ls ~/.agents/skills/ ~/.claude/skills/ ~/.pi/agent/skills/ 2>/dev/null | sort -u | grep -x '<name>'
+  find ~/.claude/plugins -maxdepth 3 -type d -name '<name>' 2>/dev/null
   ```
+
+  ⚠️ **プラグインも名前空間である。** 置き場3つだけを見て「衝突なし」と判断し、
+  既にある名前を使いかけた。**4つとも見る。**
 
 - 正本や配り先を実体のディレクトリで置き換えると、以後 repo の変更が届かなくなる
   （`install.sh` はそれを見つけて止まる）。**編集は repo 側の `skills/<name>/` に対して行う**——
