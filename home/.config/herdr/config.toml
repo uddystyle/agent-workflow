@@ -7,13 +7,48 @@
 # 意図して書いていないもの:
 #   terminal.default_shell  この環境の $SHELL は zsh。書くと pane のシェルが変わる
 #   worktrees.directory     repo の中に worktree を置く規約と衝突しうる。使い始めてから決める
-#   keys.command            annotate プラグインを入れてから足す
 
 onboarding = false
 
 [keys]
 prefix = "ctrl+,"
 reload_config = "prefix+r"
+
+# annotate プラグインの割り当て。
+#
+# 既定を1つも動かしていない。空いているキーだけを使う——
+# 空きは `herdr --default-config` から引いた。
+# 🔴 `prefix+o` は既定で通知先へ飛ぶ。annotate の文書レビューは `prefix+i` に置いた。
+
+[[keys.command]]
+key = "prefix+a"
+type = "plugin_action"
+command = "annotate.capture"
+description = "選択範囲に注釈を付ける"
+
+[[keys.command]]
+key = "prefix+shift+a"
+type = "plugin_action"
+command = "annotate.copy-context"
+description = "注釈をまとめて context として写す"
+
+[[keys.command]]
+key = "prefix+shift+o"
+type = "plugin_action"
+command = "annotate.last"
+description = "エージェントの直前の返答をレビューして返す"
+
+[[keys.command]]
+key = "prefix+i"
+type = "plugin_action"
+command = "annotate.open"
+description = "このフォルダの文書をレビューする"
+
+[[keys.command]]
+key = "prefix+shift+m"
+type = "plugin_action"
+command = "annotate.manage"
+description = "注釈の一覧"
 
 [theme]
 name = "terminal"
