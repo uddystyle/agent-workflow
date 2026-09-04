@@ -1,13 +1,13 @@
 # agent-workflow
 
-**Generated:** 2026-09-04T13:01:02Z
-**Commit:** 45f4c9b
+**Generated:** 2026-09-04T13:12:55Z
+**Commit:** 67f2ea6
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
 
 ```sh
-git log 45f4c9b..HEAD -- install.sh skills/ home/
+git log 67f2ea6..HEAD -- install.sh skills/ home/
 ```
 
 何も出なければ、印が古くても内容は正しい。出たら、その分だけ疑う。
@@ -95,9 +95,15 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
   （`install.sh` はそれを見つけて止まる）。**編集は repo 側の `skills/<name>/` に対して行う**——
   symlink 経由なので即座に反映され、張り直しは要らない
 
-- `~/.claude/settings.json`: **別管理のフックが同居している**（herdr と orca）。
-  orca 側はエンコード済みの長い1行で、手で直すと壊す。
+- `~/.claude/settings.json`: **道具が自分で書き込むフックが同居する。**
+  誰が何を持っているかは、その場で引く:
+
+  ```sh
+  python3 -c "import json,os;print(list(json.load(open(os.path.expanduser('~/.claude/settings.json'))).get('hooks',{})))"
+  ```
+
   🔴 **`hooks/` を足すときは、既存の配列に足す。ファイルごと書き換えない。**
+  道具が入れたフックは**消さない**——その道具が管理しており、再インストールで戻る
 
 - `install.sh` を素で走らせること自体が境界である。**確かめるときは隔離する**（Repository 節）
 
@@ -123,5 +129,14 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
 ## Notes
 
 - 🔴 **`install.sh` はこの repo で唯一、repo の外に副作用を持つ。** `~/.claude/skills/` を書き換える
+- 🔴 **道具の連携フックが道具本体の版に遅れると、設定が正しくても何も検出されない。**
+  設定を疑う前にここを見る。空に見えるのは、たいてい設定ではなく版のずれである:
+
+  ```sh
+  herdr integration status          # 版のずれを出す
+  herdr integration install claude  # 古ければ入れ直す。フックは herdr が管理している
+  ```
+
+  ⚠️ **入れ直しても、いま動いているセッションには効かない。** 登録は起動時に1度だけ行われる
 - 判断の理由は `DECISIONS.md` にある。**ここに書き写さない**——書き写した時点で、
   片方が古くなる場所が1つ増える
