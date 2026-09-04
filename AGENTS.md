@@ -1,13 +1,13 @@
 # agent-workflow
 
-**Generated:** 2026-09-04T12:52:40Z
-**Commit:** 109beea
+**Generated:** 2026-09-04T13:01:02Z
+**Commit:** 45f4c9b
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
 
 ```sh
-git log 109beea..HEAD -- install.sh skills/ home/
+git log 45f4c9b..HEAD -- install.sh skills/ home/
 ```
 
 何も出なければ、印が古くても内容は正しい。出たら、その分だけ疑う。
@@ -76,7 +76,8 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
 - `description` には、そのスキルに来るべき分岐を列挙する。呼ばれるかどうかはここの文言で決まる
 - 手順にはそれぞれ完了条件を置く。「できたか判定できる」形にする
 - 禁止ではなく、やることを書く
-- 1ファイル 10KB 以内
+- **この文書と `SKILL.md` は 10KB を超えない**——毎回 context に載るため。
+  積み上がる台帳（`DECISIONS.md`）は対象外（D-12）
 
 ## Boundaries
 
