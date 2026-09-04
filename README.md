@@ -49,8 +49,9 @@ brew install stow     # 設定を張るのに要る
 ## 検査
 
 ```sh
-./tests/install.sh    # 道具が正しいか
-./tests/doctor.sh     # 現場が想定どおりか
+./tests/install.sh       # 道具が正しいか
+./tests/secret-scan.sh   # ガードレールが止めるべきものを止めるか
+./tests/doctor.sh        # 現場が想定どおりか
 ```
 
 前者は一時ディレクトリだけを使い、`install.sh` の受入条件を確認する。
