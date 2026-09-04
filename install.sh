@@ -60,12 +60,28 @@ if [ -d "$repo/home" ]; then
 		printf 'STOP stow が無いので設定を張れない\n' >&2
 		printf '     brew install stow を実行してから、もう一度これを走らせる\n' >&2
 		blocked=$((blocked + 1))
-	elif stow --no-folding -d "$repo" -t "$stow_target" home; then
-		printf 'STOW home -> %s\n' "$stow_target"
-		linked=$((linked + 1))
 	else
-		printf 'STOP 設定の張り先に実体がある。中身を %s/home へ移してから消す\n' "$repo" >&2
-		blocked=$((blocked + 1))
+		# 張る前に、張るものが残っているかを見ておく。
+		# 何もしていないのに「張った」と数えると、報告が実態とずれる。
+		# パイプにしない——grep -q が先に閉じると pipefail で stow が失敗扱いになる。
+		plan=$(stow -n -v 2 --no-folding -d "$repo" -t "$stow_target" home 2>&1 || true)
+		case "$plan" in
+		*"LINK: "* | *"MKDIR: "*) pending=yes ;;
+		*) pending=no ;;
+		esac
+
+		if stow --no-folding -d "$repo" -t "$stow_target" home; then
+			if [ "$pending" = yes ]; then
+				printf 'STOW home -> %s\n' "$stow_target"
+				linked=$((linked + 1))
+			else
+				printf 'OK   home は張り済み\n'
+				skipped=$((skipped + 1))
+			fi
+		else
+			printf 'STOP 設定の張り先に実体がある。中身を %s/home へ移してから消す\n' "$repo" >&2
+			blocked=$((blocked + 1))
+		fi
 	fi
 fi
 
