@@ -1,13 +1,13 @@
 # agent-workflow
 
-**Generated:** 2026-09-04T14:07:53Z
-**Commit:** 13d7907
+**Generated:** 2026-09-04T16:28:12Z
+**Commit:** 1a4f397
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
 
 ```sh
-git log 13d7907..HEAD -- install.sh skills/ home/
+git log 1a4f397..HEAD -- install.sh skills/ home/
 ```
 
 何も出なければ、印が古くても内容は正しい。出たら、その分だけ疑う。
@@ -78,7 +78,10 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
 ## Conventions
 
 - スキルは `SKILL.md` 形式。frontmatter に `name` と `description` を置く
-- `description` には、そのスキルに来るべき分岐を列挙する。呼ばれるかどうかはここの文言で決まる
+- `description` には、そのスキルに来るべき分岐を列挙する。**どういうときに来るかはここの文言で決まる**
+- 🔴 **呼べるかどうかは文言では決まらない。** frontmatter の `disable-model-invocation` と
+  `user-invocable` が決める。**エージェントに勝手に呼ばれたくないスキルは、ここで止める**。
+  ⚠️ **両方のエージェントで同じに効くかは確かめていない**——道具ごとに表し方が違う
 - 手順にはそれぞれ完了条件を置く。「できたか判定できる」形にする
 - 禁止ではなく、やることを書く
 - **この文書と `SKILL.md` は 10KB を超えない**——毎回 context に載るため。
