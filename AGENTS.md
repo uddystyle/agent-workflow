@@ -1,13 +1,13 @@
 # agent-workflow
 
-**Generated:** 2026-09-04T19:18:39Z
-**Commit:** fabd399
+**Generated:** 2026-09-04T19:20:44Z
+**Commit:** 0642de1
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
 
 ```sh
-git log fabd399..HEAD -- install.sh skills/ home/ tests/
+git log 0642de1..HEAD -- install.sh skills/ home/ tests/
 ```
 
 何も出なければ、印が古くても内容は正しい。出たら、その分だけ疑う。
