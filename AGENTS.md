@@ -1,13 +1,13 @@
 # agent-workflow
 
-**Generated:** 2026-09-04T13:39:34Z
-**Commit:** d4785fa
+**Generated:** 2026-09-04T14:07:53Z
+**Commit:** 13d7907
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
 
 ```sh
-git log d4785fa..HEAD -- install.sh skills/ home/
+git log 13d7907..HEAD -- install.sh skills/ home/
 ```
 
 何も出なければ、印が古くても内容は正しい。出たら、その分だけ疑う。
@@ -133,6 +133,14 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
   他のスキル群が実体のディレクトリで同居している。ここへ配ることで、複数のエージェントが同じスキルを読む
 - Depends on: Claude Code —— `~/.claude/skills/` からスキルを読み、`~/.claude/settings.json` の `hooks` からガードレールを呼ぶ
 - Depends on: Pi —— `~/.pi/agent/skills/` からスキルを読む。置き場が無ければ配らない
+- Depends on: **herdr のプラグイン** —— `home/` の設定がプラグインのアクションを名前で参照する。
+  🔴 **プラグインはこの repo が入れない。** 道具が管理しており、入っていなければその割り当てだけが効かない。
+  何が入っているかは引ける:
+
+  ```sh
+  herdr plugin list
+  herdr plugin action list --plugin <id>
+  ```
 
 ## Notes
 
