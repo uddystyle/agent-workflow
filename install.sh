@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# skills/ の各スキルを ~/.claude/skills/ へ張る。冪等。
+# skills/ の各スキルを ~/.claude/skills/ へ、home/ の設定を ~ へ張る。冪等。
 #
-# 実体のディレクトリが既にある場合は上書きせず止まる。
+# 実体のファイルやディレクトリが既にある場合は上書きせず止まる。
 # 消してよいかは人が判断する。
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 target="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
+stow_target="${STOW_TARGET:-$HOME}"
 
 mkdir -p "$target"
 
@@ -49,6 +50,26 @@ for src in "$repo"/skills/*/; do
 	linked=$((linked + 1))
 done
 
+# home/ の設定を stow で $HOME へ張る。
+#
+# 🔴 --no-folding を外さない。張り先のディレクトリが無いとき、stow は
+# ディレクトリごと1本の symlink にする（folding）。~/.config/herdr/ には
+# ソケットとログが同居するので、畳むと repo の中にランタイムが作られる。
+if [ -d "$repo/home" ]; then
+	if ! command -v stow >/dev/null 2>&1; then
+		printf 'STOP stow が無いので設定を張れない\n' >&2
+		printf '     brew install stow を実行してから、もう一度これを走らせる\n' >&2
+		blocked=$((blocked + 1))
+	elif stow --no-folding -d "$repo" -t "$stow_target" home; then
+		printf 'STOW home -> %s\n' "$stow_target"
+		linked=$((linked + 1))
+	else
+		printf 'STOP 設定の張り先に実体がある。中身を %s/home へ移してから消す\n' "$repo" >&2
+		blocked=$((blocked + 1))
+	fi
+fi
+
 printf '\n張った %s / 済み %s / 止めた %s\n' "$linked" "$skipped" "$blocked"
-printf '置き場: %s\n' "$target"
+printf 'スキル: %s\n' "$target"
+printf '設定:   %s\n' "$stow_target"
 exit "$blocked"

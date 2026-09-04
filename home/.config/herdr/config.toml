@@ -1,0 +1,43 @@
+# herdr の設定。この repo が正本で、install.sh が ~/.config/herdr/config.toml へ張る。
+#
+# 既定と違う値だけを書く。既定のまま使うものは書かない——書き写すと、
+# herdr 側で既定が変わったときに気づけなくなる。
+# 既定の全一覧は `herdr --default-config` で引ける。
+#
+# 意図して書いていないもの:
+#   terminal.default_shell  この環境の $SHELL は zsh。書くと pane のシェルが変わる
+#   worktrees.directory     repo の中に worktree を置く規約と衝突しうる。使い始めてから決める
+#   keys.command            annotate プラグインを入れてから足す
+
+onboarding = false
+
+[keys]
+prefix = "ctrl+,"
+reload_config = "prefix+r"
+
+[theme]
+name = "terminal"
+
+[ui]
+sidebar_width = 32
+prompt_new_workspace_name = true
+
+# 🔴 エージェント一覧を「注意が要る順」に並べる。
+# 既定の "spaces" はワークスペース順なので、止まっているものが下に埋もれる。
+agent_panel_sort = "priority"
+
+# blocked / working / done / idle を別々の記号で出す。既定の "dots" は色だけで、
+# 色の違いは見落とす。
+status_indicators = "symbols"
+
+[ui.toast]
+delivery = "herdr"
+
+[ui.toast.herdr]
+position = "top-right"
+
+[ui.sound]
+enabled = false
+
+[experimental]
+kitty_graphics = true
