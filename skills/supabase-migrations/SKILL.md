@@ -7,9 +7,9 @@ description: Supabase migration を作成・確認・反映する。supabase db 
 
 ## 1. 対象を決める
 
-`SUPABASE_ENV` が `dev` または `prod` かを確認する。無ければ聞く。project ref・接続文字列・トークンの値は出さない。
+対象環境を確認し、人に Pi の `/supabase-env dev` または `/supabase-env prod` を実行してもらい、セッションへ記録する。Pi 起動時の `SUPABASE_ENV=dev|prod` でも初期値を与えられる。project ref・接続文字列・トークンの値は出さない。
 
-**完了条件**: 対象環境を `dev` か `prod` と言える。
+**完了条件**: Pi の status に `Supabase: dev` か `Supabase: prod` が出ている。
 
 ## 2. 変更を作る
 

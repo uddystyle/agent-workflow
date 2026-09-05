@@ -16,15 +16,25 @@ assert.equal(shouldConfirmSupabasePush("prod", "supabase db push --dry-run"), fa
 assert.equal(shouldConfirmSupabasePush("dev", "supabase db push"), false);
 assert.equal(shouldConfirmSupabasePush("prod", "supabase migration new add_users"), false);
 
-let handler;
-extension.default({ on(name, callback) { if (name === "tool_call") handler = callback; } });
-process.env.SUPABASE_ENV = "prod";
-const denied = await handler(
+let toolHandler;
+let environmentCommand;
+const entries = [];
+extension.default({
+  on(name, callback) { if (name === "tool_call") toolHandler = callback; },
+  registerCommand(name, command) { if (name === "supabase-env") environmentCommand = command; },
+  appendEntry(type, data) { entries.push({ type, data }); },
+});
+assert.ok(environmentCommand);
+const status = [];
+await environmentCommand.handler("prod", { ui: { setStatus: (...args) => status.push(args), notify() {} } });
+assert.deepEqual(entries, [{ type: "supabase-environment", data: { environment: "prod" } }]);
+assert.equal(status.at(-1)[1], "Supabase: prod");
+const denied = await toolHandler(
   { toolName: "bash", input: { command: "supabase db push" } },
   { ui: { confirm: async () => false } },
 );
 assert.equal(denied.block, true);
-const dryRun = await handler(
+const dryRun = await toolHandler(
   { toolName: "bash", input: { command: "supabase db push --dry-run" } },
   { ui: { confirm: async () => { throw new Error("dry-run must not ask"); } } },
 );
