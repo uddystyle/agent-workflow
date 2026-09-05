@@ -48,6 +48,27 @@ brew install stow     # 設定を張るのに要る
 
 Claude Code のフック登録は `~/.claude/settings.json` にある既存の hooks と同居するため、インストーラは上書きしない。`./tests/doctor.sh` が秘密スキャンの `PreToolUse` 登録漏れを検出したら、表示された hook を既存の配列へ追加する。
 
+### 追跡していない Pi 拡張
+
+`home/.pi/agent/extensions/` には、**この repo が持たない拡張**が入る。
+参考先にライセンスが無く、公開 repo で再配布できないため、**置き場だけ借りて中身は追跡しない**（`.gitignore`）。
+
+🔴 **clone しただけでは入らない。** 取得してから `./install.sh` を走らせる。
+
+```sh
+D=home/.pi/agent/extensions/<name>
+U=https://raw.githubusercontent.com/dmmulroy/.dotfiles/main/home/.pi/agent/extensions/<name>
+mkdir -p "$D"
+for f in index.ts package.json tsconfig.json README.md; do
+  curl -fsSL -o "$D/$f" "$U/$f" || echo "取得失敗: $f"
+done
+```
+
+⚠️ ファイル構成は拡張ごとに違う。1ファイルだけのものもある。
+⚠️ **走らせる前に中身を読む。** 自分で書いていないコードを、読まずに動かさない。
+
+`./tests/doctor.sh` は張られているかを見る。**読み込まれたかは見られない**——`pi` を起動して、その拡張のコマンドが出るかを目で確かめる。
+
 ## 検査
 
 ```sh
