@@ -1,0 +1,22 @@
+{
+  "enabled": true,
+  "cloakCharacter": "*",
+  "tryAllPatterns": true,
+  "patterns": [
+    {
+      "filePattern": ["**/.env", "**/.env.*", "**/*.env"],
+      "cloakPattern": "(=).+",
+      "replace": "$1"
+    },
+    {
+      "filePattern": ["**/auth.json", "**/credentials.json", "**/*-credentials.json"],
+      "cloakPattern": "(\"(?:access|refresh|token|accessToken|refreshToken|apiKey|api_key|secret|password|clientSecret|idToken|sessionToken|authorization)\"\\s*:\\s*\")[^\"]+",
+      "replace": "$1"
+    },
+    {
+      "filePattern": ["**/*.pem", "**/*.key", "**/*.p12"],
+      "cloakPattern": "^([A-Za-z0-9+/]{4})[A-Za-z0-9+/=]{20,}$",
+      "replace": "$1"
+    }
+  ]
+}

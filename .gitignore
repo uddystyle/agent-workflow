@@ -19,6 +19,7 @@ home/.pi/agent/*
 !home/.pi/agent/extensions/**
 !home/.pi/agent/package.json
 !home/.pi/agent/tsconfig.json
+!home/.pi/agent/cloak.json
 home/.pi/agent/extensions/**/node_modules/
 
 # 🔴 他人が書いた拡張は、置き場だけ借りて中身は追跡しない。
