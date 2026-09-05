@@ -20,6 +20,9 @@ home/.pi/agent/*
 !home/.pi/agent/package.json
 !home/.pi/agent/tsconfig.json
 !home/.pi/agent/cloak.json
+# Pi だけに配るスキル。共有の正本（~/.agents/skills/）を通さない——消費者が1つしかない。
+!home/.pi/agent/skills/
+!home/.pi/agent/skills/**
 home/.pi/agent/extensions/**/node_modules/
 
 # 🔴 他人が書いた拡張は、置き場だけ借りて中身は追跡しない。
