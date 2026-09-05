@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# doctor が秘密スキャンの配置だけでなく Claude Code への登録まで見ることを、隔離して確かめる。
+# doctor が隔離した配置と canonical worktree の正本を読むことを確かめる。
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -20,7 +20,7 @@ fail() {
 }
 
 # install.sh が作る配置を使う。実際の HOME には書かない。
-mkdir -p "$tmp/.claude/skills" "$tmp/.pi/agent/skills"
+mkdir -p "$tmp/.pi/agent/skills"
 env HOME="$tmp" "$doctor_repo/install.sh" >/dev/null
 
 run_doctor() {
@@ -31,10 +31,9 @@ set +e
 out=$(run_doctor)
 status=$?
 set -e
-[ "$status" -ne 0 ] || fail '秘密スキャンが未登録なのに doctor が成功した'
+[ "$status" -eq 0 ] || fail "隔離した配置を doctor が失敗とした: $out"
 [[ $out == *'herdr は注意順・状態記号・画面内 toast で agent を観測する'* ]] || fail 'Herdr の agent 観測設定を確認しなかった'
 [[ $out == *'Pi subagent 定義は読む道具だけを持つ'* ]] || fail '読み取り専用 subagent を確認しなかった'
-[[ $out == *'PreToolUse に秘密スキャンが登録されていない'* ]] || fail '未登録の次の一手を報告しなかった'
 
 mkdir -p "$tmp/bad-agents"
 printf '%s\n' '---' 'name: bad' 'description: test only' 'tools: read, write' '---' >"$tmp/bad-agents/bad.md"
@@ -63,21 +62,6 @@ set -e
 [ "$status" -ne 0 ] || fail '不十分な Herdr agent 観測設定で doctor が成功した'
 [[ $out == *'herdr の agent 観測設定が足りない'* ]] || fail '不十分な Herdr agent 観測設定を報告しなかった'
 
-mkdir -p "$tmp/.claude"
-python3 - "$tmp/.claude/settings.json" "$tmp/.claude/hooks/secret-scan.sh" <<'PY'
-import json, sys
-json.dump({"hooks": {"PreToolUse": [{"hooks": [{
-    "type": "command", "command": f"bash {sys.argv[2]}", "timeout": 10
-}]}]}}, open(sys.argv[1], "w"))
-PY
-
-set +e
-out=$(run_doctor)
-status=$?
-set -e
-[ "$status" -eq 0 ] || fail "正しく登録した秘密スキャンを doctor が失敗とした: $out"
-[[ $out == *'PreToolUse に秘密スキャンが登録されている'* ]] || fail '登録済みを報告しなかった'
-
 # herdr の状態取得に失敗しても、最新版だと誤って報告しない。
 printf '#!/usr/bin/env bash\nexit 1\n' >"$tmp/unreadable-herdr"
 chmod +x "$tmp/unreadable-herdr"
@@ -98,15 +82,8 @@ git -C "$canonical" worktree add "$canonical/main" HEAD >/dev/null 2>&1
 git -C "$canonical" worktree add "$canonical/a-topic" HEAD >/dev/null 2>&1
 # main より辞書順で先に現れる topic worktree 上で、作業中の doctor を実行する。
 cp "$repo/tests/doctor.sh" "$canonical/a-topic/tests/doctor.sh"
-mkdir -p "$canonical_home/.claude/skills" "$canonical_home/.pi/agent/skills"
+mkdir -p "$canonical_home/.pi/agent/skills"
 env HOME="$canonical_home" "$canonical/main/install.sh" >/dev/null
-mkdir -p "$canonical_home/.claude"
-python3 - "$canonical_home/.claude/settings.json" "$canonical_home/.claude/hooks/secret-scan.sh" <<'PY'
-import json, sys
-json.dump({"hooks": {"PreToolUse": [{"hooks": [{
-    "type": "command", "command": f"bash {sys.argv[2]}", "timeout": 10
-}]}]}}, open(sys.argv[1], "w"))
-PY
 
 set +e
 out=$(env HOME="$canonical_home" "$canonical/a-topic/tests/doctor.sh" 2>&1)
@@ -126,15 +103,8 @@ git -C "$fallback_canonical" worktree add "$fallback_canonical/a-fallback" HEAD 
 git -C "$fallback_canonical" worktree add "$fallback_canonical/z-topic" HEAD >/dev/null 2>&1
 [ ! -e "$fallback_canonical/main" ] || fail 'fallback 用 canonical root に main がある'
 cp "$repo/tests/doctor.sh" "$fallback_canonical/z-topic/tests/doctor.sh"
-mkdir -p "$fallback_home/.claude/skills" "$fallback_home/.pi/agent/skills"
+mkdir -p "$fallback_home/.pi/agent/skills"
 env HOME="$fallback_home" "$fallback_canonical/a-fallback/install.sh" >/dev/null
-mkdir -p "$fallback_home/.claude"
-python3 - "$fallback_home/.claude/settings.json" "$fallback_home/.claude/hooks/secret-scan.sh" <<'PY'
-import json, sys
-json.dump({"hooks": {"PreToolUse": [{"hooks": [{
-    "type": "command", "command": f"bash {sys.argv[2]}", "timeout": 10
-}]}]}}, open(sys.argv[1], "w"))
-PY
 
 set +e
 out=$(env HOME="$fallback_home" "$fallback_canonical/z-topic/tests/doctor.sh" 2>&1)

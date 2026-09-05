@@ -15,9 +15,9 @@ fail() {
 run_install() {
 	case_dir=$1
 	shift
-	mkdir -p "$case_dir/agents" "$case_dir/claude" "$case_dir/pi" "$case_dir/home"
-	env AGENTS_SKILLS_DIR="$case_dir/agents" \
-		CLAUDE_SKILLS_DIR="$case_dir/claude" \
+	mkdir -p "$case_dir/agents" "$case_dir/pi" "$case_dir/home"
+	env HOME="$case_dir" \
+		AGENTS_SKILLS_DIR="$case_dir/agents" \
 		PI_SKILLS_DIR="$case_dir/pi" \
 		STOW_TARGET="$case_dir/home" \
 		"$@" "$repo/install.sh"
@@ -48,7 +48,6 @@ case_clean_and_repeat() {
 	for src in "$repo"/skills/*/; do
 		name=$(basename "$src")
 		expect_link "$d/agents/$name" "${src%/}"
-		expect_link "$d/claude/$name" "$d/agents/$name"
 		expect_link "$d/pi/$name" "$d/agents/$name"
 	done
 	# 🔴 パスを直書きしない。home/ にあるディレクトリ全部について、
@@ -70,6 +69,8 @@ case_clean_and_repeat() {
 	# 上の expect_link が経路として確かめている。
 	[[ $first == *'済み 0 / 止めた 0'* ]] || fail '初回に既存扱いか停止があった'
 	[[ $first != *'張った 0 '* ]] || fail '初回に何も張っていない'
+	[[ $first != *'.claude'* ]] || fail 'Claude の置き場を参照した'
+	[ ! -e "$d/.claude" ] || fail 'Claude の置き場を作った'
 
 	second=$(run_install "$d" bash)
 	[[ $second == *'張った 0 '* ]] || fail '再実行で張り直した'
@@ -77,15 +78,14 @@ case_clean_and_repeat() {
 	passed=$((passed + 4))
 }
 
-case_missing_consumer_directory() {
-	local d="$tmp/missing-consumer" output
+case_missing_pi_directory() {
+	local d="$tmp/missing-pi" output
 	mkdir -p "$d/agents" "$d/home"
-	output=$(env AGENTS_SKILLS_DIR="$d/agents" \
-		CLAUDE_SKILLS_DIR="$d/claude" \
+	output=$(env HOME="$d" \
+		AGENTS_SKILLS_DIR="$d/agents" \
 		PI_SKILLS_DIR="$d/pi" \
 		STOW_TARGET="$d/home" \
 		bash "$repo/install.sh")
-	[ ! -e "$d/claude" ] || fail '無い Claude の置き場を作った'
 	[ ! -e "$d/pi" ] || fail '無い Pi の置き場を作った'
 	for src in "$repo"/skills/*/; do
 		name=$(basename "$src")
@@ -104,16 +104,6 @@ case_real_skill_directory() {
 	[ "$status" -ne 0 ] || fail '実体のスキルディレクトリで成功した'
 	[[ $output == *'は実体である'* ]] || fail '実体のスキルディレクトリを報告しなかった'
 	[ -d "$d/agents/agents-md" ] || fail '既存の実体を壊した'
-	passed=$((passed + 1))
-}
-
-case_migrate_old_link() {
-	local d="$tmp/migrate"
-	mkdir -p "$d/agents" "$d/claude"
-	ln -s "$repo/skills/agents-md" "$d/claude/agents-md"
-	run_install "$d" bash >/dev/null
-	expect_link "$d/claude/agents-md" "$d/agents/agents-md"
-	[ -f "$d/claude/agents-md/SKILL.md" ] || fail '移行後に SKILL.md へ到達できない'
 	passed=$((passed + 1))
 }
 
@@ -145,7 +135,6 @@ case_without_stow() {
 	[ "$status" -ne 0 ] || fail 'stow 無しで成功した'
 	[[ $output == *'stow が無い'* ]] || fail 'stow 無しを報告しなかった'
 	expect_link "$d/agents/agents-md" "$repo/skills/agents-md"
-	expect_link "$d/claude/agents-md" "$d/agents/agents-md"
 	expect_link "$d/pi/agents-md" "$d/agents/agents-md"
 	[ ! -e "$d/home/.config/herdr/config.toml" ] || fail 'stow 無しでも設定を張った'
 	passed=$((passed + 1))
@@ -167,9 +156,8 @@ case_real_config_file() {
 }
 
 case_clean_and_repeat
-case_missing_consumer_directory
+case_missing_pi_directory
 case_real_skill_directory
-case_migrate_old_link
 case_foreign_link
 case_without_stow
 case_real_config_file

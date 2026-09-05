@@ -28,7 +28,6 @@ else
 fi
 agents="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 consumers=(
-	"${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
 	"${PI_SKILLS_DIR:-$HOME/.pi/agent/skills}"
 )
 
@@ -160,42 +159,7 @@ else
 	bad "Pi subagent 定義に読む以外の道具がある。編集は Herdr pane で人が見ながら動かす agent に任せる"
 fi
 
-# 5. 秘密スキャンが Claude Code の実行時フックとして登録されているか。
-# settings.json は別管理のフックと同居するため、ここでは読むだけにする。
-# command の引用を shlex でほどき、実際に置かれた hook と同じ実体を指すかを見る。
-secret_hook="$HOME/.claude/hooks/secret-scan.sh"
-claude_settings="$HOME/.claude/settings.json"
-if [ ! -e "$secret_hook" ]; then
-	bad "秘密スキャン本体が無い。./install.sh を走らせる"
-elif [ ! -r "$claude_settings" ]; then
-	bad "Claude Code の PreToolUse に秘密スキャンが登録されていない。settings.json の既存 hooks を残して $secret_hook を追加する"
-elif SECRET_HOOK="$secret_hook" CLAUDE_SETTINGS="$claude_settings" python3 - <<'PY'
-import json, os, shlex, sys
-
-hook = os.path.realpath(os.environ["SECRET_HOOK"])
-try:
-    with open(os.environ["CLAUDE_SETTINGS"], encoding="utf-8") as f:
-        settings = json.load(f)
-    entries = settings.get("hooks", {}).get("PreToolUse", [])
-    for entry in entries:
-        for item in entry.get("hooks", []):
-            if item.get("type") != "command":
-                continue
-            for token in shlex.split(item.get("command", "")):
-                candidate = os.path.realpath(os.path.expanduser(os.path.expandvars(token)))
-                if candidate == hook:
-                    sys.exit(0)
-except Exception:
-    pass
-sys.exit(1)
-PY
-then
-	ok "Claude Code の PreToolUse に秘密スキャンが登録されている"
-else
-	bad "Claude Code の PreToolUse に秘密スキャンが登録されていない。settings.json の既存 hooks を残して $secret_hook を追加する"
-fi
-
-# 6. 管理下の置き場に、切れた symlink が無いか
+# 5. 管理下の置き場に、切れた symlink が無いか
 broken=0
 for dir in "$agents" "${consumers[@]}"; do
 	[ -d "$dir" ] || continue

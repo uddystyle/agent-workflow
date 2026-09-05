@@ -5,7 +5,7 @@
 set -uo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-hook="$repo/home/.claude/hooks/secret-scan.sh"
+hook="$repo/home/.pi/agent/extensions/secret-scan/secret-scan.sh"
 passed=0
 
 fail() {

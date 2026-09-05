@@ -11,7 +11,6 @@ stow_target="${STOW_TARGET:-$HOME}"
 
 # スキルを読むエージェントの置き場。存在するものにだけ配る。
 consumers=(
-	"${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
 	"${PI_SKILLS_DIR:-$HOME/.pi/agent/skills}"
 )
 
@@ -74,7 +73,6 @@ for src in "$repo"/skills/*/; do
 			printf 'SKIP %s -> %s（置き場が無い）\n' "$name" "${rel%%/*}"
 			continue
 		fi
-		# 配り先の呼び名は ~ の直下の名前で表す（~/.claude/skills なら .claude）。
 		link_one "$dir/$name" "$agents/$name" "${name} -> ${rel%%/*}"
 	done
 done
