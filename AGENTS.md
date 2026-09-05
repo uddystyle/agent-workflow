@@ -1,13 +1,13 @@
 # agent-workflow
 
-**Generated:** 2026-09-05T11:37:42Z
-**Commit:** c362e53
+**Generated:** 2026-09-05T15:45:26Z
+**Commit:** 851bf8d
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
 
 ```sh
-git log c362e53..HEAD -- install.sh skills/ home/ tests/
+git log 851bf8d..HEAD -- install.sh skills/ home/ tests/
 ```
 
 何も出なければ、印が古くても内容は正しい。出たら、その分だけ疑う。
@@ -43,18 +43,14 @@ git log c362e53..HEAD -- install.sh skills/ home/ tests/
 ```
 
 🔴 **素の `install.sh` は回さない。** 本物の正本・配り先・`~` を書き換える。
-検査は環境変数で置き場を差し替えて隔離する（`AGENTS_SKILLS_DIR` / `CLAUDE_SKILLS_DIR` /
-`PI_SKILLS_DIR` / `STOW_TARGET`）。
+検査は環境変数で置き場を差し替えて隔離する（変数名は `install.sh` の冒頭が正本）。
 
 スキルを変えたときは、**実際に呼んで動くところまで**確かめる。読んで正しそうでは足りない。
 検査を書いたら、**わざと緩めて落ちることまで見る**。落ちなければ、その検査は何も守っていない。
 
 🔴 **文書を足したら、他プロジェクトの固有名とドメイン語が入っていないか掃く**（`DECISIONS.md` D-10）。
-⚠️ **作業ツリーだけでは足りない。履歴も見る**——消しても、コミットに残ったものは読める。
-
-```sh
-git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list --all)
-```
+⚠️ **作業ツリーだけでは足りない。履歴も見る**——消しても、コミットに残ったものは読める
+（`git grep -nE '<語>' $(git rev-list --all)`）。
 
 ## How to navigate this codebase
 
@@ -71,12 +67,11 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
 
 - **文書の書き方の正本は `skills/writing-for-agents/`** である。スキルを作る・直すとき、
   この文書を直すときは、先にそれを読む。ここには結論だけ置く
-- スキルは `SKILL.md` 形式。frontmatter に `name` と `description` を置く
-- `description` には来るべき分岐を列挙する。**言い換えで分岐を増やさない**——
-  同じ場合を2度書いたものは1つに畳む
-- 🔴 **呼べるかどうかは文言では決まらない。** frontmatter の `disable-model-invocation` と
-  `user-invocable` が決める。立てるとモデルからは呼べず、人が呼ぶよう指示が返る（Claude Code で実測）。
-  ⚠️ **Pi では確かめていない**——道具ごとに表し方が違う
+- スキルは `SKILL.md` 形式。`description` に来るべき分岐を列挙する。
+  **言い換えで分岐を増やさない**——同じ場合を2度書いたものは1つに畳む
+- 🔴 **呼べるかどうかは文言では決まらない。** frontmatter の `disable-model-invocation` が決める。
+  立てると **Claude Code でも Pi でも、モデルが見る一覧から消える**（両方の実装で確認）。
+  人が明示的に呼ぶ入口だけが残る
 - 手順にはそれぞれ完了条件を置く。「できたか判定できる」形にする
 - 禁止ではなく、やることを書く。禁止で操ると、禁止したい語が相手の context に載る
 - **この文書と `SKILL.md` は 10KB を超えない**——毎回 context に載るため。
@@ -115,14 +110,15 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
 
 - 🔴 **`install.sh` は自分の置き場所を repo とみなす。** repo の内側に作った worktree から
   走らせると、正本が**消える予定のディレクトリ**を指す。
-  checkout は canonical worktree root に並べる（D-21）。走らせる前に、いまどこに居るかを見る:
-
-  ```sh
-  git worktree list --verbose
-  ```
-
+  checkout は canonical worktree root に並べる（D-21）。
+  走らせる前に、いまどこに居るかを見る（`git worktree list --verbose`）。
   🔴 **root ごと動かすときは、先に symlink を剥がす**（D-21）。動かしてから走らせると、
   既存リンクがどちらの下にも一致せず、**全部が「別管理の symlink」として止まる**
+
+- 🔴 **`home/` の実体と、追跡している中身は一致しない。** `home/.pi/agent/extensions/` に
+  他人が書いた拡張を置いているが、ライセンスが無いので追跡していない（`.gitignore`）。
+  **clone しただけでは入らない**——取得手順は `README.md` が持つ。
+  ⚠️ `doctor` は張られたかを見るが、**道具が読み込んだかは見られない**。`pi` を起動して確かめる
 
 - `AGENTS.md`: 生成物である。手で直さず `/agents-md` で作り直す。
   🔴 **手で直すと、印が指すコミットと中身がずれる**——印は「いつの事実か」を伝える唯一の機構なので、
@@ -135,17 +131,11 @@ git grep -nE '<他プロジェクトの名前>|<ドメイン語>' $(git rev-list
 
 ## Dependencies
 
-- Depends on: **正本の置き場**（`~/.agents/skills/`）—— 管理外であり、他のスキル群が同居する
 - Depends on: Claude Code —— `~/.claude/skills/` からスキルを読み、
   `~/.claude/settings.json` の `hooks.PreToolUse` からガードレールを呼ぶ
-- Depends on: Pi —— `~/.pi/agent/skills/` からスキルを読む。置き場が無ければ配らない
-- Depends on: **herdr のプラグイン** —— `home/` の設定がプラグインのアクションを名前で参照する。
-  🔴 **プラグインはこの repo が入れない。** 道具が管理しており、入っていなければその割り当てだけが効かない:
-
-  ```sh
-  herdr plugin list
-  herdr plugin action list --plugin <id>
-  ```
+- Depends on: Pi —— `~/.pi/agent/skills/` からスキルを読み、`~/.pi/agent/extensions/` から拡張を読む
+- Depends on: **herdr のプラグイン** —— `home/` の設定がアクションを名前で参照する。
+  🔴 **この repo は入れない。** 入っていなければその割り当てだけが効かない（`herdr plugin list` で引く）
 
 ## Notes
 
