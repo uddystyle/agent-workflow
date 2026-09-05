@@ -49,6 +49,13 @@ git -C "$root" show-ref --verify --quiet refs/remotes/origin/remote-only && fail
 
 git -C "$root" worktree remove --force remote-only
 
+set +e
+(cd "$root/main" && "$helper" invalid-branch 'invalid..branch' main) >/dev/null 2>&1
+status=$?
+set -e
+[ "$status" -eq 2 ] || fail '無効な branch 名を usage error にしなかった'
+[ ! -e "$root/invalid-branch" ] || fail '無効な branch 名で destination を作った'
+
 (cd "$root/main" && "$helper" feature feature/test main) >/dev/null
 [ -f "$root/feature/README.md" ] || fail '新しい worktree に基底ファイルが無い'
 [ "$(git -C "$root/feature" branch --show-current)" = feature/test ] || fail '新しい branch が違う'
