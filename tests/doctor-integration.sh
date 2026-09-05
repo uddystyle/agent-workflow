@@ -114,4 +114,32 @@ status=$?
 set -e
 [ "$status" -eq 0 ] || fail "canonical main ではなく bare root または topic を正本にした: $out"
 [[ $out == *'agents-md は正本に届いている'* ]] || fail 'canonical main のスキルを確認しなかった'
+
+# canonical .bare root に main が無い場合、doctor は呼び出した topic ではなく、
+# 最初の linked worktree を正本として fallback する。
+fallback_canonical="$tmp/fallback-canonical"
+fallback_home="$tmp/fallback-home"
+mkdir "$fallback_canonical"
+git clone --bare "$repo" "$fallback_canonical/.bare" >/dev/null 2>&1
+printf 'gitdir: ./.bare\n' >"$fallback_canonical/.git"
+git -C "$fallback_canonical" worktree add "$fallback_canonical/a-fallback" HEAD >/dev/null 2>&1
+git -C "$fallback_canonical" worktree add "$fallback_canonical/z-topic" HEAD >/dev/null 2>&1
+[ ! -e "$fallback_canonical/main" ] || fail 'fallback 用 canonical root に main がある'
+cp "$repo/tests/doctor.sh" "$fallback_canonical/z-topic/tests/doctor.sh"
+mkdir -p "$fallback_home/.claude/skills" "$fallback_home/.pi/agent/skills"
+env HOME="$fallback_home" "$fallback_canonical/a-fallback/install.sh" >/dev/null
+mkdir -p "$fallback_home/.claude"
+python3 - "$fallback_home/.claude/settings.json" "$fallback_home/.claude/hooks/secret-scan.sh" <<'PY'
+import json, sys
+json.dump({"hooks": {"PreToolUse": [{"hooks": [{
+    "type": "command", "command": f"bash {sys.argv[2]}", "timeout": 10
+}]}]}}, open(sys.argv[1], "w"))
+PY
+
+set +e
+out=$(env HOME="$fallback_home" "$fallback_canonical/z-topic/tests/doctor.sh" 2>&1)
+status=$?
+set -e
+[ "$status" -eq 0 ] || fail "main の無い canonical root で linked worktree へ fallback しなかった: $out"
+[[ $out == *'agents-md は正本に届いている'* ]] || fail 'fallback linked worktree のスキルを確認しなかった'
 printf 'PASS doctor integration checks\n'
