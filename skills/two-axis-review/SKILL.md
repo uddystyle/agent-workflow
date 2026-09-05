@@ -75,8 +75,12 @@ home/.pi/agent/agents/spec.md         スペックの観点
 
 ```sh
 herdr pane split --cwd <対象の repo> --env REVIEW_SUBAGENT=standards
+herdr pane rename <返った pane ID> standards
 herdr pane split --cwd <対象の repo> --env REVIEW_SUBAGENT=spec
+herdr pane rename <返った pane ID> spec
 ```
+
+pane の名前は観点名にする。並列の一覧で、種類ではなく**何を見ているか**を区別するためである。
 
 ⚠️ **「さらに下へ委譲するな」と書くだけでは弱い。** 禁じたい振る舞いを書けば、その語が相手の
 context に載る。**状態で分岐させる**ほうが確実である。文で伝えるのは、状態を渡せないときだけにする。
