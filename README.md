@@ -74,6 +74,7 @@ done
 ```sh
 ./tests/install.sh       # 道具が正しいか
 ./tests/secret-scan.sh   # Pi のガードレールが止めるべきものを止めるか
+./tests/supabase-prod-confirm.sh # prod migration の確認 UI 条件
 ./tests/doctor.sh        # 現場が想定どおりか
 ./tests/doctor-integration.sh # doctor の隔離検査
 ./tests/worktrees.sh          # canonical worktree helper を隔離して確かめる
