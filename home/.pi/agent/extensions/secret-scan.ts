@@ -12,7 +12,13 @@ function scan(payload: unknown): Promise<ScanResult> {
     let output = "";
     child.stdout.on("data", (chunk) => { output += chunk; });
     child.on("error", () => resolve({ denied: true, reason: "秘密の走査を起動できない。走査できないものは通さない" }));
-    child.on("close", () => {
+    child.on("close", (code) => {
+      if (output.trim() === "") {
+        resolve(code === 0
+          ? { denied: false }
+          : { denied: true, reason: "秘密の走査が失敗した。走査できないものは通さない" });
+        return;
+      }
       try {
         const result = JSON.parse(output);
         const reason = result?.hookSpecificOutput?.permissionDecisionReason;

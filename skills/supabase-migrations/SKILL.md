@@ -27,7 +27,7 @@ supabase db push --dry-run
 
 出力から適用予定の migration だけを報告する。値を含む接続情報は報告しない。
 
-**完了条件**: 適用予定 migration の一覧を示した。
+**完了条件**: 適用予定 migration の一覧を示した。prod では Pi の status が `dry-run 済み` になっている。
 
 ## 4. 反映する
 
@@ -37,6 +37,6 @@ supabase db push --dry-run
 supabase db push
 ```
 
-`SUPABASE_ENV=prod` の Pi は確認 UI でも止まる。承認されなければ反映しない。
+`prod` の Pi は、同じセッションで成功した dry-run が無ければ反映を止める。その後も確認 UI で止まる。承認されなければ反映しない。
 
 **完了条件**: コマンドの終了結果と、適用された migration を報告した。

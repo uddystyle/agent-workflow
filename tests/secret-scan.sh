@@ -88,4 +88,17 @@ out=$(printf '{"tool_name":"Write","tool_input":{"content":"x"}}' | bash "$tmp/s
 [[ $out == *'"permissionDecision":"deny"'* ]] || fail '表が無いのに通した'
 passed=$((passed + 1))
 
+# Pi extension は、scanner の空出力を正常結果として通す。
+REPO="$repo" node --experimental-strip-types --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+
+const extension = await import(`${process.env.REPO}/home/.pi/agent/extensions/secret-scan.ts`);
+let toolHandler;
+extension.default({ on(name, handler) { if (name === "tool_call") toolHandler = handler; } });
+assert.ok(toolHandler);
+const result = await toolHandler({ toolName: "write", input: { content: "ordinary documentation" } });
+assert.equal(result, undefined);
+NODE
+passed=$((passed + 1))
+
 printf 'PASS %s checks\n' "$passed"
