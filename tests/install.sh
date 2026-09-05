@@ -77,6 +77,23 @@ case_clean_and_repeat() {
 	passed=$((passed + 4))
 }
 
+case_missing_consumer_directory() {
+	local d="$tmp/missing-consumer" output
+	mkdir -p "$d/agents" "$d/home"
+	output=$(env AGENTS_SKILLS_DIR="$d/agents" \
+		CLAUDE_SKILLS_DIR="$d/claude" \
+		PI_SKILLS_DIR="$d/pi" \
+		STOW_TARGET="$d/home" \
+		bash "$repo/install.sh")
+	[ ! -e "$d/claude" ] || fail '無い Claude の置き場を作った'
+	[ ! -e "$d/pi" ] || fail '無い Pi の置き場を作った'
+	for src in "$repo"/skills/*/; do
+		name=$(basename "$src")
+		[[ $output == *"SKIP ${name} -> "* ]] || fail "$name の未導入 consumer を報告しなかった"
+	done
+	passed=$((passed + 1))
+}
+
 case_real_skill_directory() {
 	local d="$tmp/real-skill" output status
 	mkdir -p "$d/agents/agents-md"
@@ -150,6 +167,7 @@ case_real_config_file() {
 }
 
 case_clean_and_repeat
+case_missing_consumer_directory
 case_real_skill_directory
 case_migrate_old_link
 case_foreign_link

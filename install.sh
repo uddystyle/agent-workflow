@@ -67,9 +67,14 @@ for src in "$repo"/skills/*/; do
 
 	# 2. 正本を各エージェントへ配る。置き場が無いエージェントには配らない。
 	for dir in "${consumers[@]}"; do
-		[ -d "$dir" ] || continue
-		# 配り先の呼び名は ~ の直下の名前で表す（~/.claude/skills なら .claude）。
+		# 配り先を作るのは、そのエージェントを入れる仕事になる。
+		# ここは既にある置き場へ配るだけで、未導入のエージェントは明示して飛ばす。
 		rel=${dir#"$HOME"/}
+		if [ ! -d "$dir" ]; then
+			printf 'SKIP %s -> %s（置き場が無い）\n' "$name" "${rel%%/*}"
+			continue
+		fi
+		# 配り先の呼び名は ~ の直下の名前で表す（~/.claude/skills なら .claude）。
 		link_one "$dir/$name" "$agents/$name" "${name} -> ${rel%%/*}"
 	done
 done

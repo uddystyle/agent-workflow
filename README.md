@@ -10,7 +10,7 @@ Ghostty のタブで `claude` を立ち上げるだけで使える状態を目�
 | -------------------------- | ---------------------------------------------------------- |
 | `skills/`                  | 動詞ごとのスキル。`~/.agents/skills/` を経由して各エージェントへ配る |
 | `home/`                    | マシンの設定。`~` と同じ形の木。stow で張る                |
-| `hooks/`                   | ガードレール。`~/.claude/settings.json` から呼ぶ           |
+| `home/.claude/hooks/`      | ガードレール本体。Claude Code の `PreToolUse` から呼ぶ     |
 
 スキルは**エージェントの種類ごとに置かない。** 正本を1つ持ち、そこから配る。
 エージェントが増えても、増えるのは配り先の1行だけになる。
@@ -46,12 +46,16 @@ brew install stow     # 設定を張るのに要る
 
 `home/` は `~` と同じ形の木にしておくだけでよい。設置の手続きは書かない——stow が形から決める。
 
+Claude Code のフック登録は `~/.claude/settings.json` にある既存の hooks と同居するため、インストーラは上書きしない。`./tests/doctor.sh` が秘密スキャンの `PreToolUse` 登録漏れを検出したら、表示された hook を既存の配列へ追加する。
+
 ## 検査
 
 ```sh
 ./tests/install.sh       # 道具が正しいか
 ./tests/secret-scan.sh   # ガードレールが止めるべきものを止めるか
-./tests/doctor.sh        # 現場が想定どおりか
+./tests/doctor.sh             # 現場が想定どおりか（秘密スキャンの登録も含む）
+./tests/doctor-integration.sh # doctor のフック登録検査を隔離して確かめる
+./tests/worktrees.sh          # canonical worktree helper を隔離して確かめる
 ```
 
 前者は一時ディレクトリだけを使い、`install.sh` の受入条件を確認する。
