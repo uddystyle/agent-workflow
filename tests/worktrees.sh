@@ -56,6 +56,16 @@ set -e
 [ "$status" -eq 2 ] || fail '無効な branch 名を usage error にしなかった'
 [ ! -e "$root/invalid-branch" ] || fail '無効な branch 名で destination を作った'
 
+mkdir "$root/existing-destination"
+printf 'keep\n' >"$root/existing-destination/sentinel"
+set +e
+(cd "$root/main" && "$helper" existing-destination rejected-branch main) >/dev/null 2>&1
+status=$?
+set -e
+[ "$status" -eq 1 ] || fail '既存 destination を exit 1 で拒まなかった'
+[ -d "$root/existing-destination" ] || fail '既存 destination directory を変えた'
+[ "$(<"$root/existing-destination/sentinel")" = keep ] || fail '既存 destination の内容を変えた'
+
 (cd "$root/main" && "$helper" feature feature/test main) >/dev/null
 [ -f "$root/feature/README.md" ] || fail '新しい worktree に基底ファイルが無い'
 [ "$(git -C "$root/feature" branch --show-current)" = feature/test ] || fail '新しい branch が違う'
