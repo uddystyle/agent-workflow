@@ -3,8 +3,16 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-tmp=$(mktemp -d)
+tmp=$(cd -P "$(mktemp -d)" && pwd)
 trap 'rm -rf "$tmp"' EXIT
+
+# 通常の検査は canonical root 外の写しで走らせる。呼び出した worktree の
+# canonical layout が、ここで作る HOME の配置を指し替えないようにする。
+doctor_repo="$tmp/doctor-repo"
+mkdir "$doctor_repo" "$doctor_repo/tests"
+cp -R "$repo/skills" "$repo/home" "$doctor_repo/"
+cp "$repo/install.sh" "$doctor_repo/install.sh"
+cp "$repo/tests/doctor.sh" "$doctor_repo/tests/doctor.sh"
 
 fail() {
 	printf 'FAIL %s\n' "$*" >&2
@@ -13,10 +21,10 @@ fail() {
 
 # install.sh が作る配置を使う。実際の HOME には書かない。
 mkdir -p "$tmp/.claude/skills" "$tmp/.pi/agent/skills"
-env HOME="$tmp" "$repo/install.sh" >/dev/null
+env HOME="$tmp" "$doctor_repo/install.sh" >/dev/null
 
 run_doctor() {
-	env HOME="$tmp" "$repo/tests/doctor.sh" 2>&1
+	env HOME="$tmp" "$doctor_repo/tests/doctor.sh" 2>&1
 }
 
 set +e
@@ -31,7 +39,7 @@ set -e
 mkdir -p "$tmp/bad-agents"
 printf '%s\n' '---' 'name: bad' 'description: test only' 'tools: read, write' '---' >"$tmp/bad-agents/bad.md"
 set +e
-out=$(env HOME="$tmp" PI_AGENT_DEFINITIONS_DIR="$tmp/bad-agents" "$repo/tests/doctor.sh" 2>&1)
+out=$(env HOME="$tmp" PI_AGENT_DEFINITIONS_DIR="$tmp/bad-agents" "$doctor_repo/tests/doctor.sh" 2>&1)
 status=$?
 set -e
 [ "$status" -ne 0 ] || fail '書き込み可能な subagent 定義で doctor が成功した'
@@ -40,7 +48,7 @@ rm "$tmp/bad-agents/bad.md"
 
 printf '%s\n' '---' 'name: duplicate' 'description: test only' 'tools: read, grep, find, ls, read' '---' >"$tmp/bad-agents/duplicate.md"
 set +e
-out=$(env HOME="$tmp" PI_AGENT_DEFINITIONS_DIR="$tmp/bad-agents" "$repo/tests/doctor.sh" 2>&1)
+out=$(env HOME="$tmp" PI_AGENT_DEFINITIONS_DIR="$tmp/bad-agents" "$doctor_repo/tests/doctor.sh" 2>&1)
 status=$?
 set -e
 [ "$status" -ne 0 ] || fail '重複した tools 定義で doctor が成功した'
@@ -49,7 +57,7 @@ rm "$tmp/bad-agents/duplicate.md"
 
 printf '[ui]\nagent_panel_sort = "spaces"\n' >"$tmp/bad-herdr.toml"
 set +e
-out=$(env HOME="$tmp" HERDR_DOCTOR_CONFIG="$tmp/bad-herdr.toml" "$repo/tests/doctor.sh" 2>&1)
+out=$(env HOME="$tmp" HERDR_DOCTOR_CONFIG="$tmp/bad-herdr.toml" "$doctor_repo/tests/doctor.sh" 2>&1)
 status=$?
 set -e
 [ "$status" -ne 0 ] || fail '不十分な Herdr agent 観測設定で doctor が成功した'
@@ -74,10 +82,36 @@ set -e
 printf '#!/usr/bin/env bash\nexit 1\n' >"$tmp/unreadable-herdr"
 chmod +x "$tmp/unreadable-herdr"
 set +e
-out=$(env HOME="$tmp" HERDR_BIN="$tmp/unreadable-herdr" "$repo/tests/doctor.sh" 2>&1)
+out=$(env HOME="$tmp" HERDR_BIN="$tmp/unreadable-herdr" "$doctor_repo/tests/doctor.sh" 2>&1)
 status=$?
 set -e
 [ "$status" -eq 0 ] || fail "読めない herdr を doctor が BAD とした: $out"
 [[ $out == *'herdr の連携状態を読めない'* ]] || fail '読めない herdr を報告しなかった'
 [[ $out != *'herdr の連携は入っている分すべて最新'* ]] || fail '読めない herdr を最新と報告した'
+# canonical root は bare repository を .git から参照する。doctor は bare root や
+# 辞書順で先に現れる topic ではなく、canonical layout の main を正本として読まなければならない。
+canonical="$tmp/canonical"
+canonical_home="$tmp/canonical-home"
+git clone --bare "$repo" "$canonical/.bare" >/dev/null 2>&1
+printf 'gitdir: ./.bare\n' >"$canonical/.git"
+git -C "$canonical" worktree add "$canonical/main" HEAD >/dev/null 2>&1
+git -C "$canonical" worktree add "$canonical/a-topic" HEAD >/dev/null 2>&1
+# main より辞書順で先に現れる topic worktree 上で、作業中の doctor を実行する。
+cp "$repo/tests/doctor.sh" "$canonical/a-topic/tests/doctor.sh"
+mkdir -p "$canonical_home/.claude/skills" "$canonical_home/.pi/agent/skills"
+env HOME="$canonical_home" "$canonical/main/install.sh" >/dev/null
+mkdir -p "$canonical_home/.claude"
+python3 - "$canonical_home/.claude/settings.json" "$canonical_home/.claude/hooks/secret-scan.sh" <<'PY'
+import json, sys
+json.dump({"hooks": {"PreToolUse": [{"hooks": [{
+    "type": "command", "command": f"bash {sys.argv[2]}", "timeout": 10
+}]}]}}, open(sys.argv[1], "w"))
+PY
+
+set +e
+out=$(env HOME="$canonical_home" "$canonical/a-topic/tests/doctor.sh" 2>&1)
+status=$?
+set -e
+[ "$status" -eq 0 ] || fail "canonical main ではなく bare root または topic を正本にした: $out"
+[[ $out == *'agents-md は正本に届いている'* ]] || fail 'canonical main のスキルを確認しなかった'
 printf 'PASS doctor integration checks\n'

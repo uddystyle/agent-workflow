@@ -10,13 +10,22 @@ set -uo pipefail
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 # 🔴 worktree から走らせても、見るのは実際に張った本体である。
-# bare canonical root は `git worktree list` の先頭に現れるため、最初の linked
-# worktree を選ぶ。doctor が見るのはマシンの状態であって、この checkout の状態ではない。
-main_worktree=$(git -C "$repo" worktree list --porcelain 2>/dev/null | awk '
+# canonical layout では bare root と同じ階層の main が正本である。worktree list の
+# 順序は topic の名前で変わるため、main が無いときだけ最初の linked worktree へ fallback する。
+canonical_bare=$(git -C "$repo" worktree list --porcelain 2>/dev/null | awk '
 	BEGIN { RS=""; FS="\n" }
-	$2 != "bare" { sub(/^worktree /, "", $1); print $1; exit }
+	$2 == "bare" { sub(/^worktree /, "", $1); print $1; exit }
 ')
-[ -n "$main_worktree" ] && [ -d "$main_worktree" ] && repo=$main_worktree
+canonical_main="${canonical_bare:+$(dirname "$canonical_bare")/main}"
+if [ -n "$canonical_main" ] && [ -d "$canonical_main" ]; then
+	repo=$canonical_main
+else
+	main_worktree=$(git -C "$repo" worktree list --porcelain 2>/dev/null | awk '
+		BEGIN { RS=""; FS="\n" }
+		$2 != "bare" { sub(/^worktree /, "", $1); print $1; exit }
+	')
+	[ -n "$main_worktree" ] && [ -d "$main_worktree" ] && repo=$main_worktree
+fi
 agents="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 consumers=(
 	"${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
