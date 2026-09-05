@@ -37,6 +37,18 @@ git -C "$root" fetch --prune origin >/dev/null
 git -C "$root" remote set-head origin --auto >/dev/null
 git -C "$root" worktree add main main >/dev/null
 
+# root がまだ fetch していない remote 専用 branch を作る。
+git -C "$seed" switch -c remote-only main >/dev/null
+git -C "$seed" commit --allow-empty -m remote-only >/dev/null
+git -C "$seed" push -u origin remote-only >/dev/null
+git -C "$root" show-ref --verify --quiet refs/remotes/origin/remote-only && fail 'remote 専用 branch を事前に取得した'
+
+(cd "$root/main" && "$helper" remote-only remote-only) >/dev/null
+[ "$(git -C "$root/remote-only" branch --show-current)" = remote-only ] || fail 'remote 専用 branch の local branch が違う'
+[ "$(git -C "$root/remote-only" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}')" = origin/remote-only ] || fail 'remote 専用 branch を origin の tracking branch にしなかった'
+
+git -C "$root" worktree remove --force remote-only
+
 (cd "$root/main" && "$helper" feature feature/test main) >/dev/null
 [ -f "$root/feature/README.md" ] || fail '新しい worktree に基底ファイルが無い'
 [ "$(git -C "$root/feature" branch --show-current)" = feature/test ] || fail '新しい branch が違う'
