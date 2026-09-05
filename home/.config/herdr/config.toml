@@ -51,7 +51,16 @@ command = "annotate.manage"
 description = "注釈の一覧"
 
 [theme]
-name = "terminal"
+name = "catppuccin"
+
+[theme.custom]
+accent = "#c6a0f6"
+panel_bg = "#24273a"
+green = "#a6da95"
+yellow = "#eed49f"
+red = "#ed8796"
+blue = "#8aadf4"
+
 
 [ui]
 sidebar_width = 32
@@ -69,7 +78,7 @@ status_indicators = "symbols"
 delivery = "herdr"
 
 [ui.toast.herdr]
-position = "top-right"
+position = "bottom-right"
 
 [ui.sound]
 enabled = false
