@@ -9,6 +9,18 @@ async function run(command: string, args: string[], cwd: string) {
   return stdout;
 }
 
+async function startAgent(name: string, pane: string, cwd: string) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      await run("herdr", ["agent", "start", name, "--kind", "pi", "--pane", pane], cwd);
+      return;
+    } catch (error) {
+      if (!String(error).includes("agent_pane_busy") || attempt === 19) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+}
+
 function paneId(output: string): string {
   const value = JSON.parse(output);
   const id = value?.result?.root_pane?.pane_id;
@@ -37,12 +49,17 @@ export default function (pi: any) {
           ["standards", "規約観点だけで差分をレビューし、根拠と確認方法を報告する。"],
           ["spec", "スペック観点だけで差分をレビューし、足りない点と余分な点を報告する。"],
         ] as const;
-        for (const [label, instruction] of prompts) {
+        const runId = Date.now().toString(36);
+        const launched = await Promise.all(prompts.map(async ([label, instruction]) => {
           const created = await run("herdr", ["tab", "create", "--workspace", workspace, "--cwd", ctx.cwd, "--label", label, "--env", `REVIEW_SUBAGENT=${label}`, "--no-focus"], ctx.cwd);
           const pane = paneId(created);
-          await run("herdr", ["agent", "start", label, "--kind", "pi", "--pane", pane], ctx.cwd);
-          await run("herdr", ["agent", "prompt", label, `${instruction}\n起点: ${base}\n対象: ${base}..HEAD。ファイルを変更しない。`, "--wait", "--timeout", "180000"], ctx.cwd);
-        }
+          const agent = `${label}-${runId}`;
+          await startAgent(agent, pane, ctx.cwd);
+          return { agent, instruction };
+        }));
+        await Promise.all(launched.map(({ agent, instruction }) =>
+          run("herdr", ["agent", "prompt", agent, `${instruction}\n起点: ${base}\n対象: ${base}..HEAD。ファイルを変更しない。`, "--wait", "--timeout", "180000"], ctx.cwd),
+        ));
         ctx.ui.notify("standards / spec reviewer を起動した。Herdr の agent read で結果を読む", "info");
       } catch (error) {
         ctx.ui.notify(`並列レビューを起動できない: ${error instanceof Error ? error.message : String(error)}`, "error");
