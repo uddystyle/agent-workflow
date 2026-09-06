@@ -155,7 +155,18 @@ case_real_config_file() {
 	passed=$((passed + 1))
 }
 
+case_absolute_owned_link() {
+	local d="$tmp/absolute-owned"
+	run_install "$d" bash >/dev/null
+	rm "$d/home/.config/herdr/config.toml"
+	ln -s "$repo/home/.config/herdr/config.toml" "$d/home/.config/herdr/config.toml"
+	run_install "$d" bash >/dev/null || fail '正本を指す絶対 symlink で再配布に失敗した'
+	expect_resolves_to "$d/home/.config/herdr/config.toml" "$repo/home/.config/herdr/config.toml"
+	passed=$((passed + 1))
+}
+
 case_clean_and_repeat
+case_absolute_owned_link
 case_missing_pi_directory
 case_real_skill_directory
 case_foreign_link

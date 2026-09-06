@@ -88,10 +88,27 @@ if [ -d "$repo/home" ]; then
 		printf '     brew install stow を実行してから、もう一度これを走らせる\n' >&2
 		blocked=$((blocked + 1))
 	else
+		# 以前の配布が作った、正本を直接指す絶対 symlink を stow の形へ戻す。
+		# 他人の symlink は触らない。dry-run が別の衝突で止まれば元に戻す。
+		owned_links=()
+		while IFS= read -r source; do
+			rel=${source#"$repo/home/"}
+			dest="$stow_target/$rel"
+			if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$source" ]; then
+				rm "$dest"
+				owned_links+=("$dest:$source")
+			fi
+		done < <(find "$repo/home" -type f)
+
 		# 張る前に、張るものが残っているかを見ておく。
 		# 何もしていないのに「張った」と数えると、報告が実態とずれる。
 		# パイプにしない——grep -q が先に閉じると pipefail で stow が失敗扱いになる。
 		plan=$(stow -n -v 2 --no-folding -d "$repo" -t "$stow_target" home 2>&1 || true)
+		if [[ $plan == *"would cause conflicts"* ]]; then
+			for entry in "${owned_links[@]}"; do
+				ln -s "${entry#*:}" "${entry%%:*}"
+			done
+		fi
 		case "$plan" in
 		*"LINK: "* | *"MKDIR: "*) pending=yes ;;
 		*) pending=no ;;
