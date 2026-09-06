@@ -65,6 +65,8 @@ blue = "#8aadf4"
 [ui]
 sidebar_width = 32
 prompt_new_workspace_name = true
+show_agent_labels_on_pane_borders = false
+confirm_close = true
 
 # 🔴 エージェント一覧を「注意が要る順」に並べる。
 # 既定の "spaces" はワークスペース順なので、止まっているものが下に埋もれる。
