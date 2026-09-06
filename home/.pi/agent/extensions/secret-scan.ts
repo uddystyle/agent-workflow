@@ -1,5 +1,8 @@
 // 書き出す直前に秘密の形をした値を止める。値は結果にもログにも出さない。
 import { spawn } from "node:child_process";
+import { appendFile, mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scanner = fileURLToPath(new URL("./secret-scan/secret-scan.sh", import.meta.url));
@@ -34,6 +37,22 @@ function scan(payload: unknown): Promise<ScanResult> {
 }
 
 export default function (pi: any) {
+  let lastDenied: { tool: string; rules: string[] } | undefined;
+
+  pi.registerCommand("secret-scan-false-positive", {
+    description: "Record the most recent secret-scan block as a false positive",
+    handler: async (_args: string, ctx: any) => {
+      if (!lastDenied) {
+        ctx.ui.notify("この session で記録できる秘密の走査拒否がない", "error");
+        return;
+      }
+      const stateDir = join(process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "agent-workflow");
+      await mkdir(stateDir, { recursive: true, mode: 0o700 });
+      await appendFile(join(stateDir, "secret-scan-false-positives.jsonl"), `${JSON.stringify({ at: new Date().toISOString(), ...lastDenied })}\n`, { mode: 0o600 });
+      ctx.ui.notify("秘密の走査の誤検知を記録した", "info");
+    },
+  });
+
   pi.on("tool_call", async (event: any) => {
     const input = event.input ?? {};
     const text = event.toolName === "write" ? input.content
@@ -46,6 +65,12 @@ export default function (pi: any) {
       tool_name: event.toolName === "write" ? "Write" : event.toolName === "edit" ? "Edit" : "Bash",
       tool_input: event.toolName === "edit" ? { new_string: text } : event.toolName === "write" ? { content: text } : { command: text },
     });
-    if (result.denied) return { block: true, reason: result.reason };
+    if (result.denied) {
+      lastDenied = {
+        tool: event.toolName,
+        rules: [...new Set((result.reason?.match(/^  行 \d+\s+(.+)$/gm) ?? []).map((line) => line.replace(/^  行 \d+\s+/, "")))],
+      };
+      return { block: true, reason: result.reason };
+    }
   });
 }

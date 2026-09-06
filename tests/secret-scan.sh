@@ -94,11 +94,43 @@ import assert from "node:assert/strict";
 
 const extension = await import(`${process.env.REPO}/home/.pi/agent/extensions/secret-scan.ts`);
 let toolHandler;
-extension.default({ on(name, handler) { if (name === "tool_call") toolHandler = handler; } });
+extension.default({
+  on(name, handler) { if (name === "tool_call") toolHandler = handler; },
+  registerCommand() {},
+});
 assert.ok(toolHandler);
 const result = await toolHandler({ toolName: "write", input: { content: "ordinary documentation" } });
 assert.equal(result, undefined);
 NODE
+passed=$((passed + 1))
+
+# 誤検知は、人が明示記録する。値やコマンド本文は state に残さない。
+if ! REPO="$repo" STATE_HOME="$tmp/state" node --experimental-strip-types --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+process.env.XDG_STATE_HOME = process.env.STATE_HOME;
+const extension = await import(`${process.env.REPO}/home/.pi/agent/extensions/secret-scan.ts`);
+let toolHandler, command;
+const notices = [];
+extension.default({
+  on(name, handler) { if (name === "tool_call") toolHandler = handler; },
+  registerCommand(name, value) { if (name === "secret-scan-false-positive") command = value; },
+});
+assert.ok(toolHandler);
+assert.ok(command);
+await toolHandler({ toolName: "write", input: { content: `sk_live_${"A".repeat(25)}` } });
+await command.handler("", { ui: { notify: (...args) => notices.push(args) } });
+assert.match(notices.at(-1)[0], /記録/);
+const [line] = (await readFile(`${process.env.STATE_HOME}/agent-workflow/secret-scan-false-positives.jsonl`, "utf8")).trim().split("\n");
+const record = JSON.parse(line);
+assert.equal(record.tool, "write");
+assert.deepEqual(record.rules, ["stripe_secret"]);
+assert.equal(JSON.stringify(record).includes("sk_live_"), false);
+NODE
+then
+	fail '誤検知記録コマンドが期待どおりに動かない'
+fi
 passed=$((passed + 1))
 
 printf 'PASS %s checks\n' "$passed"
