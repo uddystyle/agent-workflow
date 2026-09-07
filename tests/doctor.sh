@@ -110,15 +110,25 @@ fi
 herdr_config="${HERDR_DOCTOR_CONFIG:-$HOME/.config/herdr/config.toml}"
 if HERDR_CONFIG="$herdr_config" python3 - <<'PY'
 import os, sys
+
+def required_values(path):
+    section = ""
+    values = {}
+    with open(path, encoding="utf-8") as file:
+        for raw in file:
+            line = raw.split("#", 1)[0].strip()
+            if line.startswith("[") and line.endswith("]"):
+                section = line[1:-1]
+            elif "=" in line and section in {"ui", "ui.toast"}:
+                key, value = (part.strip() for part in line.split("=", 1))
+                values[(section, key)] = value.strip('"')
+    return values
+
 try:
-    import tomllib
-    with open(os.environ["HERDR_CONFIG"], "rb") as f:
-        config = tomllib.load(f)
-    ui = config.get("ui", {})
-    toast = ui.get("toast", {})
-    assert ui.get("agent_panel_sort") == "priority"
-    assert ui.get("status_indicators") == "symbols"
-    assert toast.get("delivery") == "herdr"
+    values = required_values(os.environ["HERDR_CONFIG"])
+    assert values[("ui", "agent_panel_sort")] == "priority"
+    assert values[("ui", "status_indicators")] == "symbols"
+    assert values[("ui.toast", "delivery")] == "herdr"
 except Exception:
     sys.exit(1)
 PY
@@ -240,6 +250,21 @@ if [ -d "$HOME/.pi/agent" ]; then
 	fi
 else
 	skip "pi の置き場（無い）"
+fi
+
+# 11. document review skill が呼ぶ standalone command があるか
+#     Herdr plugin 内の binary は PATH に出ないため、skill だけ届いてもreviewを開始できない。
+plannotator_bin="${PLANNOTATOR_TUI_BIN:-}"
+if [ -n "$plannotator_bin" ]; then
+	if [ -x "$plannotator_bin" ]; then
+		ok "plannotator-tui は agent から呼べる"
+	else
+		bad "plannotator-tui を実行できない。./dot init を行う"
+	fi
+elif command -v plannotator-tui >/dev/null 2>&1; then
+	ok "plannotator-tui は agent から呼べる"
+else
+	bad "plannotator-tui を実行できない。./dot init を行う"
 fi
 
 printf '\n通った %s / 気になる %s / 壊れている %s\n' "$ok_count" "$warn_count" "$bad_count"

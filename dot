@@ -46,6 +46,10 @@ stow_config() {
  link_subagent
 }
 
+trust_brew_formulae() {
+ brew trust --formula plannotator/tap/plannotator-tui
+}
+
 integrations() {
  need herdr
  herdr integration install pi
@@ -67,6 +71,7 @@ case "${1:-help}" in
    init)
     # Homebrew 自体の bootstrap は https://brew.sh/ の手順で行う。
     need brew
+    trust_brew_formulae
     brew bundle install --no-upgrade --file="$repo/packages/Brewfile"
     need npm
     if ! command -v pi >/dev/null 2>&1; then
@@ -80,6 +85,7 @@ case "${1:-help}" in
     [ -z "$(git -C "$repo" status --porcelain)" ] || { printf '変更を commit または退避してから update する\n' >&2; exit 1; }
     git -C "$repo" pull --ff-only
     brew update
+    trust_brew_formulae
     brew bundle install --file="$repo/packages/Brewfile"
     pi update --all
     stow_config

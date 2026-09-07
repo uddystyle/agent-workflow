@@ -303,7 +303,9 @@ stow が `~/.pi/agent/skills/` へ張る。`skills/` には置かない。
 **1周で終わらなかった実績はもう出ている。**
 
 **入れたもの**: エージェントの直前の返答をレビューして返す経路と、
-端末の選択に注釈を付けて Markdown として渡す経路。
+端末の選択に注釈を付けて Markdown として渡す経路。plan/spec/design documentは
+`plannotator-tui` skillから同じpaneへ返し、agentはpollせずturnを終える。
+standalone commandとskillを一組で配り、commandだけ欠けた状態はdoctorで止める。
 
 🔴 **代償——第三者のコードを1つ増やした。** 道具は審査もサンドボックス化もしない。
 導入時に外からバイナリを取得し、**チェックサムでは照合するが署名は検証しない**。

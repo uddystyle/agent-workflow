@@ -29,7 +29,10 @@ for file in index.ts agents.ts; do
  [ "$(readlink "$HOME/.pi/agent/extensions/subagent/$file")" = "$NPM_ROOT/@earendil-works/pi-coding-agent/examples/extensions/subagent/$file" ] || fail 'wrong example source'
 done
 [ ! -e "$HOME/.pi/agent/agents/worker.md" ] || fail 'sample worker was installed'
+grep -q 'brew trust --formula plannotator/tap/plannotator-tui' "$CALL_LOG" || fail 'init must trust only the plannotator-tui formula'
 grep -q 'brew bundle install --no-upgrade' "$CALL_LOG" || fail 'init must install without upgrading'
+grep -q '^tap "plannotator/tap"$' "$tmp/repo/packages/Brewfile" || fail 'Plannotator tap missing from managed dependencies'
+grep -q '^brew "plannotator-tui"$' "$tmp/repo/packages/Brewfile" || fail 'plannotator-tui missing from managed dependencies'
 grep -q 'herdr integration install pi' "$CALL_LOG" || fail 'Pi integration missing'
 grep -q 'herdr plugin install plannotator/herdr-annotate --yes' "$CALL_LOG" || fail 'plugin manifest not applied'
 ! grep -q 'integration install claude' "$CALL_LOG" || fail 'Claude CLI was configured'

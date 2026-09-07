@@ -17,6 +17,13 @@ alias=text('skills/two-axis-review/SKILL.md')
 assert 'disable-model-invocation: true' in alias
 assert '../code-review/SKILL.md' in alias
 assert 'disable-model-invocation: true' not in text('skills/worktrees/SKILL.md')
+plannotator=text('skills/plannotator-tui/SKILL.md')
+assert 'name: plannotator-tui' in plannotator
+assert 'HERDR_ENV=1' in plannotator
+assert 'plannotator-tui herdr open' in plannotator
+assert 'End your turn' in plannotator
+assert 'file://' in plannotator
+assert 'MIT License' in text('skills/plannotator-tui/LICENSE')
 assert '人に頼んで待つ' not in text('home/.pi/agent/skills/implement/SKILL.md')
 assert not (r/'home/.pi/agent/extensions/parallel-review.ts').exists()
 for name in ['standards','spec']:

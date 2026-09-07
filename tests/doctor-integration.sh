@@ -22,6 +22,9 @@ fail() {
 # install.sh が作る配置を使う。実際の HOME には書かない。
 mkdir -p "$tmp/.pi/agent/skills"
 env HOME="$tmp" "$doctor_repo/install.sh" >/dev/null
+printf '#!/usr/bin/env bash\nexit 0\n' >"$tmp/plannotator-tui"
+chmod +x "$tmp/plannotator-tui"
+export PLANNOTATOR_TUI_BIN="$tmp/plannotator-tui"
 
 run_doctor() {
 	env HOME="$tmp" "$doctor_repo/tests/doctor.sh" 2>&1
@@ -34,6 +37,7 @@ set -e
 [ "$status" -eq 0 ] || fail "隔離した配置を doctor が失敗とした: $out"
 [[ $out == *'herdr は注意順・状態記号・画面内 toast で agent を観測する'* ]] || fail 'Herdr の agent 観測設定を確認しなかった'
 [[ $out == *'Pi subagent 定義は読む道具だけを持つ'* ]] || fail '読み取り専用 subagent を確認しなかった'
+[[ $out == *'plannotator-tui は agent から呼べる'* ]] || fail 'plannotator-tui の実行経路を確認しなかった'
 
 mkdir -p "$tmp/bad-agents"
 printf '%s\n' '---' 'name: bad' 'description: test only' 'tools: read, write' '---' >"$tmp/bad-agents/bad.md"
