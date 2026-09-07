@@ -1,0 +1,7 @@
+# Herdr＋Pi の実行・配信に必要なものだけ。シェル・エディタは変更しない。
+tap "dmmulroy/tap"
+brew "git"
+brew "herdr"
+brew "node"
+brew "python@3.14"
+brew "stow"

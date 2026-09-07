@@ -44,7 +44,7 @@ gitleaks git --log-opts='--all' --redact=100
 
 🔴 **数える前に、何を1本と数えるかを固定する。** 定義が揺れると、前後の数が比較できない。
 
-- **1本** = `two-axis-review` を1回当てた変更のまとまり（起点から HEAD まで）
+- **1本** = `code-review` を1回当てた変更のまとまり（固定した対象 snapshot）
 - **一発通過** = そのレビューが**直しを1つも要求しなかった**もの
 
 ### 記録は commit の上に置く
@@ -73,5 +73,5 @@ git log --since=<日付> --format='%(trailers:key=Reviewed,valueonly)' | grep -v
 
 ### まだ規約にしない
 
-`two-axis-review` の完了条件へ移すのは、**10本数え終えてから**。
+`code-review` の完了条件へ移すのは、**10本数え終えてから**。
 いまは「そうしてみる」段階である（§3 の方針）。

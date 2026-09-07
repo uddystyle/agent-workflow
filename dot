@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# 参考先の init / update / doctor / stow。管理対象は Herdr＋Pi に限定する。
+set -euo pipefail
+repo=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+usage() { printf 'Usage: ./dot {init|update|stow|doctor}\n'; }
+need() { command -v "$1" >/dev/null 2>&1 || { printf '必要なコマンドが無い: %s\n' "$1" >&2; exit 1; }; }
+
+# Pi の版に付属する例を使う。サンプル agent / prompt は配らない。
+link_subagent() {
+ need npm
+ local source dest file current
+ source="$(npm root -g)/@earendil-works/pi-coding-agent/examples/extensions/subagent"
+ dest="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/extensions/subagent"
+ for file in index.ts agents.ts; do
+  [ -f "$source/$file" ] || { printf 'Pi の同梱例が無い: %s\n' "$source/$file" >&2; return 1; }
+ done
+ # 2ファイルとも事前確認してから張る。他管理の同居物は保つ。
+ [ ! -L "$dest" ] || { printf '別管理の subagent ディレクトリ: %s\n' "$dest" >&2; return 1; }
+ for file in index.ts agents.ts; do
+  if [ -L "$dest/$file" ]; then
+   current=$(readlink "$dest/$file")
+   case "$current" in
+    */@earendil-works/pi-coding-agent/examples/extensions/subagent/"$file") ;;
+    *) printf '別管理の symlink: %s\n' "$dest/$file" >&2; return 1 ;;
+   esac
+  elif [ -e "$dest/$file" ]; then
+   printf '既存の実体を保護する: %s\n' "$dest/$file" >&2; return 1
+  fi
+ done
+ mkdir -p "$dest"
+ for file in index.ts agents.ts; do
+  if [ -L "$dest/$file" ] && [ "$(readlink "$dest/$file")" = "$source/$file" ]; then continue; fi
+  rm -f "$dest/$file"
+  ln -s "$source/$file" "$dest/$file"
+ done
+}
+
+stow_config() {
+ # install.sh と同じ既定の HOME 配置だけをこの入口が管理する。
+ if [ -n "${PI_CODING_AGENT_DIR:-}" ] && [ "$PI_CODING_AGENT_DIR" != "$HOME/.pi/agent" ]; then
+  printf 'カスタム PI_CODING_AGENT_DIR は未対応。既定 HOME へ配信する入口です\n' >&2
+  return 1
+ fi
+ mkdir -p "$HOME/.pi/agent/skills"
+ bash "$repo/install.sh"
+ link_subagent
+}
+
+integrations() {
+ need herdr
+ herdr integration install pi
+ local source
+ while IFS= read -r source || [ -n "$source" ]; do
+  source=${source%%#*}
+  source=${source//[[:space:]]/}
+  [ -n "$source" ] || continue
+  herdr plugin install "$source" --yes
+ done <"$repo/home/.config/herdr/plugins.txt"
+ # 動いている session を変更・再起動しない。reload は利用者が行う。
+}
+
+case "${1:-help}" in
+ help|--help|-h) usage ;;
+ init|update|stow|doctor)
+  [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+  case "$1" in
+   init)
+    # Homebrew 自体の bootstrap は https://brew.sh/ の手順で行う。
+    need brew
+    brew bundle install --no-upgrade --file="$repo/packages/Brewfile"
+    need npm
+    if ! command -v pi >/dev/null 2>&1; then
+     npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+    fi
+    stow_config
+    integrations
+    ;;
+   update)
+    need git; need brew; need pi
+    [ -z "$(git -C "$repo" status --porcelain)" ] || { printf '変更を commit または退避してから update する\n' >&2; exit 1; }
+    git -C "$repo" pull --ff-only
+    brew update
+    brew bundle install --file="$repo/packages/Brewfile"
+    pi update --all
+    stow_config
+    integrations
+    ;;
+   stow) stow_config ;;
+   doctor) bash "$repo/tests/doctor.sh" ;;
+  esac
+  ;;
+ *) usage >&2; exit 2 ;;
+esac

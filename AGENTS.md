@@ -7,7 +7,7 @@
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
 
 ```sh
-git log cbe7653a..HEAD -- AGENTS.md README.md install.sh tests/*.sh DECISIONS.md skills/agents-md/TEMPLATE.md skills/worktrees/SKILL.md skills/two-axis-review/SKILL.md
+git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECISIONS.md skills home/.pi/agent/agents home/.pi/agent/skills
 ```
 
 何も出なければ、印が古くても内容は正しい。出たら、その分だけ疑う。
@@ -29,7 +29,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md install.sh tests/*.sh DECISIONS.md
 ## Repository
 
 - Runtime: bash（`install.sh:1-6`, `tests/*.sh:1`）
-- Test: `./tests/*.sh`（`README.md:72-81`）
+- Test: `for test in tests/*.sh; do bash "$test" || exit; done`（`README.md` の検査節）
 - Lint: 未定義（manifest 無し）
 - Build: 未定義（manifest 無し）
 
@@ -38,7 +38,8 @@ git log cbe7653a..HEAD -- AGENTS.md README.md install.sh tests/*.sh DECISIONS.md
 - `skills/` — スキル正本（SKILL.md）を置く場所。`README.md:7-13`, `install.sh:58-78`
 - `home/` — 機械起動時の設定本体。`install.sh:80-113`, `README.md:12`, `home/.config/herdr/config.toml:1-84`
 - `home/.pi/agent/extensions/` — Pi 拡張の置き場。`README.md:51-54`, `.gitignore:23-33`
-- `tests/` — install・doctor・guardrail・worktree 検査。`README.md:72-81`
+- `dot` / `packages/Brewfile` — 依存導入・更新・診断の入口。`README.md` の入れ方
+- `tests/` — bootstrap・review・install・doctor・guardrail・worktree 検査。`README.md` の検査節
 - `DECISIONS.md` — 方針・境界の正本。`DECISIONS.md:1-4`
 
 ## Conventions
@@ -53,9 +54,10 @@ git log cbe7653a..HEAD -- AGENTS.md README.md install.sh tests/*.sh DECISIONS.md
   `home/.pi/agent/extensions/secret-scan.ts:1-50`, `tests/secret-scan.sh:16-31`
 - Supabase prod は `SUPABASE_ENV=dev|prod` と `supabase db push` を確認経路で扱う。
   `home/.pi/agent/extensions/supabase-prod-confirm.ts:2-5`, `tests/supabase-prod-confirm.sh:14-17`
-- 並列レビュアの pane/tab は、`standards` / `spec` のような明示的な観点ラベル（perspective label）で立てる。
-  `skills/worktrees/SKILL.md §3`: worktree/tab での起動時の経路
-  `skills/two-axis-review/SKILL.md §3`: `REVIEW_SUBAGENT` を使う pane 分割時の経路
+- レビューは `skills/code-review/SKILL.md` で規約・仕様を独立した Pi subagent に渡す。
+  `agentScope: user` を指定し、差分 snapshot と親の依頼を渡す。観点定義は `home/.pi/agent/agents/`。
+- worktree は `skills/worktrees/SKILL.md` をモデルからも呼べる。作成と Herdr tab 起動は別操作。
+- `dot init/update` は依存導入・ネットワーク・HOME 変更を伴う。検査は `tests/bootstrap.sh` の偽コマンドと一時 HOME を使う。
 
 ## Boundaries
 
@@ -73,7 +75,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md install.sh tests/*.sh DECISIONS.md
 - 環境変数: `AGENTS_SKILLS_DIR`, `PI_SKILLS_DIR`, `STOW_TARGET`（`install.sh:9-15`）
 - 環境変数: `HERDR_DOCTOR_CONFIG`, `HERDR_BIN`, `PI_AGENT_DEFINITIONS_DIR`（`tests/doctor.sh:29-34`, `tests/doctor.sh:131-160`）
 - 環境変数: `SUPABASE_ENV`（`home/.pi/agent/extensions/supabase-prod-confirm.ts:18-23`）
-- 依存ツール: `git`, `stow`, `herdr`, `pi`, `node`, `python3`
+- 依存ツール: `git`, `stow`, `herdr`, `pi`, `node`, `python3`。導入一覧は `packages/Brewfile`、入口は `dot`。
 
 ## Notes
 

@@ -37,9 +37,24 @@ consumer を増やすときは、正本からの配り先を1行足す。
 ## 入れ方
 
 ```sh
-brew install stow     # 設定を張るのに要る
-./install.sh
+# Homebrew を https://brew.sh/ の公式手順で導入してから
+./dot init
 ```
+
+`dot init` は `packages/Brewfile` の依存、未導入なら Pi、設定、Pi 同梱 subagent、Herdr の Pi 連携と
+`home/.config/herdr/plugins.txt` の plugin を揃える。既存 Pi の更新はせず、シェル・エディタ・認証も変更しない。
+Pi は npm のグローバル導入を前提にする。他の導入経路で同梱例を見つけられない場合は止まる。
+
+| コマンド | 役割 |
+| --- | --- |
+| `./dot init` | 依存導入と初期構築（ネットワーク・HOME への変更あり） |
+| `./dot update` | clean な repo を fast-forward、管理依存と Pi packages を更新し、再配信 |
+| `./dot stow` | 導入済みの設定と subagent を再配信。依存導入・更新なし |
+| `./dot doctor` | 配信・観点定義・連携を診断 |
+
+`install.sh` は低水準の配信処理として残す。`dot` は既定の `~/.pi/agent` 配置を対象とする。
+稼働中の Herdr session を再起動せず、Pi の `/reload` や Herdr 設定の再読込みは人が行う。
+`dot update` はこの repo と既存 Pi packages の更新も含むため、変更内容を確認できるときに実行する。
 
 `skills/` の各ディレクトリを `~/.agents/skills/` を経由して `~/.pi/agent/skills/` へ、`home/` の中身を `~` へ symlink する。冪等。
 **既に実体のファイルやディレクトリがある場合は、上書きせず止まる。**
@@ -72,6 +87,8 @@ done
 ## 検査
 
 ```sh
+./tests/bootstrap.sh     # dot の導入・更新・衝突保護を偽の依存で検査
+./tests/review-workflow.sh # review skill・観点定義・移行境界
 ./tests/install.sh       # 道具が正しいか
 ./tests/secret-scan.sh   # Pi のガードレールが止めるべきものを止めるか
 ./tests/supabase-prod-confirm.sh # prod migration の確認 UI 条件
@@ -91,8 +108,17 @@ Herdr の pane で対象の repo を開き、`pi` を起動する。
 スキルは名前で呼ぶ。
 
 ```
-/agents-md          この repo の AGENTS.md を作り直す
+/skill:agents-md       この repo の AGENTS.md を作り直す
+/skill:code-review     起点を指定して規約・仕様を並列 subagent で見る
+/skill:worktrees       canonical root に worktree を作成・再利用する
 ```
+
+レビューは参考先と同じ二軸の独立 context で実施する。規約が一般的な smell より優先し、
+仕様なしは未評価として報告する。親の会話上の依頼と差分 snapshot を子へ渡す。
+worktrees はモデルからも呼べる。既存 clone の変換や未保存変更の破棄は確認を通す。
+
+`/parallel-review` は退役した。旧配信リンクは `install.sh` が所有元を確認して撤去する。
+`two-axis-review` は旧名の入口だけを残し、手順は `code-review` に一本化する。
 
 ## 出自
 

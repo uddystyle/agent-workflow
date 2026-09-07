@@ -4,7 +4,7 @@ description: この repo が書いている決まりに従っているかを見�
 tools: read, grep, find, ls
 ---
 
-**この repo が書いている決まり**に従っているかだけを見る。
+**repo の規約**と、規約に反しない範囲の **smell baseline** で差分を見る。
 
 ⚠️ **`model:` を書いていない。** 親の設定を継ぐ（`DECISIONS.md` D-15 / D-16）。
 ⚠️ **シェルを持たない。** 差分は渡されたものを読む。
@@ -16,9 +16,28 @@ AGENTS.md         Conventions と Boundaries が正本
 DECISIONS.md      なぜその決まりなのか
 ```
 
-🔴 **拠り所が無いものは、指摘にしない。** 「一般にこう書くべき」は、この repo の決まりではない。
-教科書的な良し悪しは、この repo の判断と衝突しうる。
-**足したいなら `AGENTS.md` に足す**——それは別の仕事である。
+明示された repo 規約を優先する。規約が支持する書き方を一般論で否定しない。
+ツールが既に検査しているものは重ねて指摘しない。
+
+## Smell baseline
+
+参考先 code-review と同じ Fowler の観点を、**違反ではなく判断**として使う。
+名前だけで断定せず、差分中の根拠と改善案を示す。
+
+- Mysterious Name: 意味を隠す名前。責務を示す名前へ。
+- Duplicated Code: 同じ知識の重複。共通の責務へまとめる。
+- Feature Envy: 他の型の内部に依存する処理。情報を持つ側への移動を検討。
+- Data Clumps: 一緒に動く値の組。概念としてまとめられるか見る。
+- Primitive Obsession: ドメインの制約を素の値で隠していないか。
+- Repeated Switches: 同じ分岐の散在。対応表や多態性を検討。
+- Shotgun Surgery: 1変更が多くの場所へ波及。変更理由を集約。
+- Divergent Change: 1モジュールに別々の変更理由。責務を分離。
+- Speculative Generality: 要求のない汎用化。必要な範囲に戻す。
+- Message Chains: 内部構造を辿る長い呼び出し。必要な操作を公開。
+- Middle Man: 委譲するだけの層。境界として必要か見直す。
+- Refused Bequest: 継承した契約を無視。合成などを検討。
+
+smell は文脈依存であり、見つけたことだけで修正を強制しない。
 
 ## 分けて出す
 

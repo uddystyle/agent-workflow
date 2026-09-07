@@ -189,8 +189,8 @@ else
 	skip "herdr（入っていない）"
 fi
 
-# 8. モデルの選択肢が2つ以上あるか（D-15 / D-16）
-#    ⚠️ not_ready は不備ではない。枠の外の提供元は認証しない（D-16）。数えて出すだけにする。
+# 8. 設定された提供元のうち、認証済みを1つ以上確認できるか。
+#    D-15 は観点とモデルの選択を分ける方針であり、複数提供元の認証は必須ではない。
 if command -v pi >/dev/null 2>&1 && [ -r "$HOME/.pi/agent/settings.json" ]; then
 	ready=0
 	while IFS= read -r provider; do
@@ -201,12 +201,16 @@ if command -v pi >/dev/null 2>&1 && [ -r "$HOME/.pi/agent/settings.json" ]; then
 	done < <(python3 -c "
 import json,os
 d=json.load(open(os.path.expanduser('~/.pi/agent/settings.json')))
-print('\n'.join(sorted({m.split('/')[0] for m in d.get('enabledModels',[])})))
+providers={m.split('/')[0] for m in d.get('enabledModels',[]) if isinstance(m,str) and '/' in m}
+default=d.get('defaultProvider')
+if isinstance(default,str) and default:
+    providers.add(default)
+print('\n'.join(sorted(providers)))
 " 2>/dev/null)
-	if [ "$ready" -ge 2 ]; then
-		ok "モデルの提供元が $ready 系統ある"
+	if [ "$ready" -ge 1 ]; then
+		ok "認証済みのモデル提供元を $ready 系統確認した"
 	else
-		warn "モデルの提供元が $ready 系統しか無い。選択肢が1つなら D-15 は働いていない"
+		warn "認証済みのモデル提供元を確認できない。Pi のモデル設定と認証状態を確認する"
 	fi
 else
 	skip "pi（入っていない）"
@@ -229,10 +233,10 @@ fi
 #    ⚠️ これは repo が張るものではない。道具に付属する例を指す。
 #    観点の定義だけでは動かないので、入っていなければ言う。
 if [ -d "$HOME/.pi/agent" ]; then
-	if [ -e "$HOME/.pi/agent/extensions/subagent/index.ts" ]; then
+	if [ -e "$HOME/.pi/agent/extensions/subagent/index.ts" ] && [ -e "$HOME/.pi/agent/extensions/subagent/agents.ts" ]; then
 		ok "委譲の拡張が入っている"
 	else
-		warn "委譲の拡張が入っていない。観点の定義だけでは動かない（D-17）"
+		warn "委譲の拡張が揃っていない。./dot init または ./dot stow と Pi の /reload を行う（D-17）"
 	fi
 else
 	skip "pi の置き場（無い）"

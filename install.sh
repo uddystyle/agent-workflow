@@ -129,6 +129,21 @@ if [ -d "$repo/home" ]; then
 	fi
 fi
 
+# 旧独自ランチャーの配信リンクだけを退役させる。別管理の実体・リンクには触れない。
+legacy="$stow_target/.pi/agent/extensions/parallel-review.ts"
+if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then
+	target=$(readlink "$legacy")
+	case "$target" in
+	/*) candidate=$target ;;
+	*) candidate="$(dirname "$legacy")/$target" ;;
+	esac
+	resolved="$(cd -P "$(dirname "$candidate")" 2>/dev/null && pwd)/$(basename "$candidate")" || resolved=""
+	if [ "$resolved" = "$repo/home/.pi/agent/extensions/parallel-review.ts" ]; then
+		rm "$legacy"
+		printf 'REMOVE 旧 parallel-review の配信リンク\n'
+	fi
+fi
+
 printf '\n張った %s / 済み %s / 止めた %s\n' "$linked" "$skipped" "$blocked"
 printf '正本:   %s\n' "$agents"
 printf '配り先: %s\n' "${consumers[*]}"

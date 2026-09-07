@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-tmp=$(mktemp -d)
+tmp=$(cd -P "$(mktemp -d)" && pwd)
 trap 'rm -rf "$tmp"' EXIT
 passed=0
 
@@ -165,7 +165,28 @@ case_absolute_owned_link() {
 	passed=$((passed + 1))
 }
 
+case_retired_review_link() {
+	local d="$tmp/retired-review" dest foreign="$tmp/foreign-review.ts"
+	run_install "$d" bash >/dev/null
+	dest="$d/home/.pi/agent/extensions/parallel-review.ts"
+	rm -f "$dest"
+	ln -s "$repo/home/.pi/agent/extensions/parallel-review.ts" "$dest"
+	run_install "$d" bash >/dev/null
+	[ ! -L "$dest" ] || fail '旧 reviewer の配信リンクが残った'
+	local relative
+	relative=$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$repo/home/.pi/agent/extensions/parallel-review.ts" "$(dirname "$dest")")
+	ln -s "$relative" "$dest"
+	run_install "$d" bash >/dev/null
+	[ ! -L "$dest" ] || fail '旧 reviewer の相対リンクが残った'
+	printf 'keep\n' >"$foreign"
+	ln -s "$foreign" "$dest"
+	run_install "$d" bash >/dev/null
+	expect_link "$dest" "$foreign"
+	passed=$((passed + 1))
+}
+
 case_clean_and_repeat
+case_retired_review_link
 case_absolute_owned_link
 case_missing_pi_directory
 case_real_skill_directory

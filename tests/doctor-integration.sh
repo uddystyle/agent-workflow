@@ -72,6 +72,26 @@ set -e
 [ "$status" -eq 0 ] || fail "読めない herdr を doctor が BAD とした: $out"
 [[ $out == *'herdr の連携状態を読めない'* ]] || fail '読めない herdr を報告しなかった'
 [[ $out != *'herdr の連携は入っている分すべて最新'* ]] || fail '読めない herdr を最新と報告した'
+# 提供元の数は選択の自由であり、複数認証を必須にしない。
+mkdir -p "$tmp/model-bin"
+printf '%s\n' '#!/usr/bin/env bash' \
+ 'if [ "${4:-}" = alpha ] && [ "${READY_PROVIDERS:-}" != none ]; then echo ready;' \
+ 'elif [ "${4:-}" = beta ] && [ "${READY_PROVIDERS:-}" = both ]; then echo ready;' \
+ 'else echo not_ready; fi' >"$tmp/model-bin/pi"
+chmod +x "$tmp/model-bin/pi"
+check_providers() {
+	local settings=$1 ready=$2 expected=$3
+	printf '%s\n' "$settings" >"$tmp/.pi/agent/settings.json"
+	out=$(env HOME="$tmp" PATH="$tmp/model-bin:$PATH" READY_PROVIDERS="$ready" "$doctor_repo/tests/doctor.sh" 2>&1)
+	[[ $out == *"$expected"* ]] || fail "提供元の判定が違う: $expected"
+	[[ $out != *'D-15 は働いていない'* ]] || fail '提供元数を D-15 の必須条件にした'
+}
+check_providers '{"enabledModels":["alpha/model-a","alpha/model-b"]}' one 'OK   認証済みのモデル提供元を 1 系統確認した'
+check_providers '{"defaultProvider":"alpha"}' one 'OK   認証済みのモデル提供元を 1 系統確認した'
+check_providers '{"defaultProvider":"alpha","enabledModels":["alpha/model-a","beta/model-b"]}' both 'OK   認証済みのモデル提供元を 2 系統確認した'
+check_providers '{"defaultProvider":"alpha"}' none 'WARN 認証済みのモデル提供元を確認できない'
+rm "$tmp/.pi/agent/settings.json"
+
 # canonical root は bare repository を .git から参照する。doctor は bare root や
 # 辞書順で先に現れる topic ではなく、canonical layout の main を正本として読まなければならない。
 canonical="$tmp/canonical"
