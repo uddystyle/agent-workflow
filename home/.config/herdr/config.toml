@@ -14,11 +14,6 @@ onboarding = false
 prefix = "ctrl+,"
 reload_config = "prefix+r"
 
-# annotate プラグインの割り当て。
-#
-# 既定を1つも動かしていない。空いているキーだけを使う——
-# 空きは `herdr --default-config` から引いた。
-# 🔴 `prefix+o` は既定で通知先へ飛ぶ。annotate の文書レビューは `prefix+i` に置いた。
 
 [[keys.command]]
 key = "prefix+a"
@@ -68,12 +63,7 @@ prompt_new_workspace_name = true
 show_agent_labels_on_pane_borders = false
 confirm_close = true
 
-# 🔴 エージェント一覧を「注意が要る順」に並べる。
-# 既定の "spaces" はワークスペース順なので、止まっているものが下に埋もれる。
 agent_panel_sort = "priority"
-
-# blocked / working / done / idle を別々の記号で出す。既定の "dots" は色だけで、
-# 色の違いは見落とす。
 status_indicators = "symbols"
 
 [ui.toast]
