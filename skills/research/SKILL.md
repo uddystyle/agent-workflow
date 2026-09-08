@@ -13,20 +13,27 @@ disable-model-invocation: true
 - `RESEARCH_SUBAGENT=1`なら、このpaneが委譲先である。追加のagentやpaneを作らず、§2から自分で実行する。
 - それ以外なら`HERDR_ENV=1`を確認し、Herdr skillを読む。Herdr外ならbackground paneを開始できないことを伝えて止める。
 
-親はcurrent tabへbackground sibling paneを1つ作る。方向はHerdr skillのlayout規則で決め、cwdを明示し、focusを移さない。
+親はcurrent tabへbackground sibling paneを1つ作る。先に`herdr pane layout --pane "$HERDR_PANE_ID"`で幅と高さを見て方向を決め、cwdを明示し、focusを移さない。splitのJSONから`.result.pane.pane_id`を読み、以後そのIDだけを使う。
 
 ```sh
 herdr pane split --current --direction <right-or-down> --cwd "$PWD" --env RESEARCH_SUBAGENT=1 --no-focus
-herdr pane process-info --pane <returned-pane-id>
 herdr agent start research --kind pi --pane <returned-pane-id>
-herdr agent prompt research "/skill:research <調べる問いと成果物の条件>"
+herdr agent prompt research "/skill:research RESEARCH_SUBAGENT=1の委譲先として、追加のagentやpaneを作らず、<問い>を調べてfindings fileを1枚書き、そのpathを返す"
 ```
 
-split直後はshell初期化中で`agent_pane_busy`になり得る。`process-info`の`foreground_is_shell`がtrueになるまで待ち、固定sleepだけで起動を決めない。
+shell準備の正本は`agent start`の結果である。成功すればPiがinteractive readyになるまで待機済み。`agent_pane_busy`のときだけ同じpaneを`herdr pane process-info --pane <id>`で読み、`foreground_processes`のいずれかのpidが`shell_pid`と一致するかを確認しながら、100ms間隔・最大30秒で再試行する。別のerror、timeout、foreground commandが残る場合は再送せず失敗として扱う。
 
-`research`が既にlive agent名として使われていれば、責務が分かる一意な名前にする。子には追加委譲せず、自分のcontextとtoolsで調査するよう伝える。止まったからといって2本目を立てない。失敗時はこのworkflowが作ったpaneを閉じ、親が続きを行う。
+`research`が既にlive agent名として使われていれば、責務が分かる一意な名前にする。子には追加委譲せず、自分のcontextとtoolsで調査するようprompt本文でも伝える。止まったからといって2本目を立てない。失敗時はこのworkflowが作ったpaneを閉じ、親が続きを行う。
 
-親は子を起動したら、独立して進められる自分の仕事を続ける。結果が必要になった時点で`herdr agent get`と`herdr agent read`を使い、子が報告したfindings fileを直接読む。
+親は子を起動したら、独立して進められる自分の仕事を続ける。結果が必要になった時点で次の順に同期し、子が報告したfindings fileを直接読む。
+
+```sh
+herdr agent wait research --timeout 120000
+herdr agent get research
+herdr agent read research --source recent-unwrapped --lines 120
+```
+
+`blocked`、timeout、stalledなら`get`と`read`で状態と本文を分け、人へ確認する。完了を確認せずpromptを再送しない。
 
 **完了条件**: 子はcurrent tabの別paneで動き、`RESEARCH_SUBAGENT=1`を持つ。追加paneを作らず、成果物pathを返した。
 

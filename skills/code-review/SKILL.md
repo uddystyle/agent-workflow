@@ -40,14 +40,14 @@ repoの明示的な規約は一般的なsmellより優先する。
 
 `HERDR_ENV=1`を確認し、Herdr skillを読む。Herdr外ならpane reviewを開始できないことを伝えて止める。
 
-`herdr agent list`で名前の衝突を確認する。例では`standards`と`spec`を使うが、既に使われていれば責務が分かる一意な名前にする。現在のpane layoutを見て、Herdr skillの規則どおりcurrent tabへ2つのbackground sibling paneを作る。
+`herdr agent list`で名前の衝突を確認する。例では`standards`と`spec`を使うが、既に使われていれば責務が分かる一意な名前にする。`herdr pane layout --pane "$HERDR_PANE_ID"`で現在のlayoutを見て、Herdr skillの規則どおりcurrent tabへ2つのbackground sibling paneを作る。
 
 ```sh
 herdr pane split --current --direction <right-or-down> --cwd "$PWD" --no-focus
 herdr pane split --current --direction <right-or-down> --cwd "$PWD" --no-focus
 ```
 
-返ったpane IDごとに`herdr pane process-info --pane <pane-id>`を読み、`foreground_is_shell`がtrueになるまで待つ。split直後はshell初期化中で`agent_pane_busy`になり得るため、固定sleepだけで起動を決めない。
+各splitのJSONから`.result.pane.pane_id`を読み、以後そのIDだけを使う。shell準備の正本は`agent start`の結果である。成功すればPiがinteractive readyになるまで待機済み。`agent_pane_busy`のときだけ同じpaneを`herdr pane process-info --pane <id>`で読み、`foreground_processes`のいずれかのpidが`shell_pid`と一致するかを確認しながら、100ms間隔・最大30秒で再試行する。別のerror、timeout、foreground commandが残る場合は再送せず失敗として扱う。
 
 読む道具だけを持つPiを起動する。親のmodelとthinkingが環境に出ていればnative引数へ渡し、無ければPiのdefaultを使う。
 
