@@ -74,6 +74,3 @@ position = "bottom-right"
 
 [ui.sound]
 enabled = false
-
-[experimental]
-kitty_graphics = true
