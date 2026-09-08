@@ -612,3 +612,20 @@ pane_history = true
 - full server restart後に、native restore対象外paneの出力を繰り返し必要とした。
 - Herdrがhistory encryption、redaction、保存対象paneの選択、retentionを提供した。
 - state directoryを`0700`、history fileを`0600`に固定し、backup方針まで検査できるようにした。
+
+## 補足: 参照先のsubagentとHerdr配置
+
+参照先commit `fd84f529229f3ed41f7e72e784164da5fd1d6a41`では、subagentを一律にPi内部processへ置く設定ではない。Herdrの宣言的configが自動routingするのでもなく、skillの手順が配置を決める。
+
+- `research/SKILL.md`: `herdr pane split ... --env RESEARCH_SUBAGENT=1`で同じtabのbackground paneを1つ作るよう明示する。子は環境変数をrecursion guardにし、追加agent/paneを作らない。
+- `herdr/SKILL.md`: 別agentは既定でcurrent tabのsibling paneへ置き、`herdr agent start`と`herdr agent prompt`で動かす。userまたは別skillが明示した場合だけsubagent用途に使い、別tab/workspace/worktreeは明示要求なしに作らない。
+- `code-review/SKILL.md`: Standards/Specをparallel sub-agentsへ渡すが、dispatch commandやpane/tabを本文で指定しない。共有skillなのでnative subagent機構を持つagentではそれを使える。参照先の追跡されたPi extension/packageにはPi同梱`subagent` extensionの導入を確認できないため、Pi＋HerdrではHerdr skillによるpane agentが実行可能な経路になるが、code-review単体の記述には曖昧さが残る。
+- `worktrees/SKILL.md`: worktree操作だけを定義し、Herdr tab/paneやagent起動は結び付けない。
+
+したがって参照先は、少なくともresearchでは**subagentを別paneへ置く**。自動で別tabへ置く設定はなく、Herdr skillの既定もsibling paneである。
+
+2026-09-08にローカルもこの配置へ変更した。researchとcode-reviewはcurrent tabのHerdr sibling paneへagentを起動し、tabは自動作成しない。Pi同梱subagent extensionの配信を退役し、research skillを共有正本へ移した。code-reviewは親のmodel/thinkingをnative引数で渡し、review paneのtoolsをread/grep/find/lsへ制限するローカルの境界を維持した。
+
+実機E2Eでは、split直後のpaneへ即座に`agent start`すると`agent_pane_busy`になった。`pane process-info`の`foreground_is_shell=true`を待ってから、read-only Pi agentを起動し、prompt、wait、結果readまで成功した。この実測をresearch/code-review両skillへ反映した。
+
+出典: 参照先 `home/.agents/skills/research/SKILL.md`、`herdr/SKILL.md`、`code-review/SKILL.md`、`worktrees/SKILL.md`、`home/.pi/package.json`と追跡extension一覧。

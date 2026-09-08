@@ -1,16 +1,15 @@
 ---
 name: code-review
-description: コミット・ブランチ・PR・作業中の変更を、規約と仕様の2軸でレビューする。独立した並列 subagent の結果を分けて報告する。
+description: コミット・ブランチ・PR・作業中の変更を、規約と仕様の2軸でレビューする。Herdrの独立したpaneへ並列に渡し、結果を分けて報告する。
 ---
 
 # 規約と仕様を別々にレビューする
 
-参考先の `code-review` と同じく、Standards と Spec を独立した subagent へ渡す。
-モデル名で役割を固定しない。実行経路は Pi 同梱の `subagent` 拡張である。
+Standards と Spec を別々のHerdr agentへ渡す。2つは同じtabのsibling paneで並列に動かし、互いのcontextを共有しない。新しいtabは作らない。
 
 ## 1. 対象を固定する
 
-起点が指定されていなければ人に聞く。指定された ref を SHA に解決し、次を採取する。
+起点が指定されていなければ人に聞く。指定されたrefをSHAに解決し、次を採取する。
 
 ```sh
 git rev-parse --verify '<base>^{commit}'
@@ -19,46 +18,69 @@ git diff <base-sha>...<head-sha>
 git log <base-sha>..<head-sha> --format=%B
 ```
 
-無効な ref や空差分なら委譲する前に止める。
+無効なrefや空差分なら委譲する前に止める。
 **未コミットの変更はこの差分に入らない。** 作業中の変更を頼まれた場合は、
-`git diff <base-sha>` と `git ls-files --others --exclude-standard` で範囲を確認し、
-未追跡ファイルは秘密・生成物を除いて読む。作業中の snapshot を渡し、取得後の変更は別扱いにする。
+`git diff <base-sha>`と`git ls-files --others --exclude-standard`で範囲を確認し、
+未追跡ファイルは秘密・生成物を除いて読む。作業中のsnapshotを渡し、取得後の変更は別扱いにする。
 
 ## 2. 規約と依頼を集める
 
-- 規約: 対象 repo の `AGENTS.md`、`CONTRIBUTING.md`、`CODING_STANDARDS.md` 等。
-- 仕様: commit の issue 参照、依頼された仕様ファイル、関連する設計文書の順で探す。
-  tracker の入口が文書化されていればそれを使う。無ければ推測せず、issue の URL や仕様の場所を人に聞く。
-- 親の会話にしかない依頼・制約・検査失敗から必要になった修正も、Spec に渡す材料へ書き起こす。
+- 規約: 対象repoの`AGENTS.md`、`CONTRIBUTING.md`、`CODING_STANDARDS.md`等。
+- 仕様: commitのissue参照、依頼された仕様ファイル、関連する設計文書の順で探す。
+  trackerの入口が文書化されていればそれを使う。無ければ推測せず、issueのURLや仕様の場所を人に聞く。
+- 親の会話にしかない依頼・制約・検査失敗から必要になった修正も、Specへ渡す材料に書く。
 
-仕様がないと人が確認した場合は Spec を起動せず、最終報告を「仕様なし・未評価」とする。
-規約がない場合も、Standards の判断基準は観点定義にある smell baseline を使える。
-repo の明示的な規約は一般的な smell より優先する。
+仕様がないと人が確認した場合はSpecを起動せず、最終報告を「仕様なし・未評価」とする。
+規約がない場合もStandardsは`~/.pi/agent/agents/standards.md`のsmell baselineを使う。
+repoの明示的な規約は一般的なsmellより優先する。
 
-## 3. 並列 subagent へ渡す
+秘密を伏せたsnapshotを一時ファイルへ置く。各agentへGit commandだけ渡して終わらせず、固定した差分、commit一覧、規約・仕様の所在、親の依頼を含める。
 
-先に `~/.pi/agent/agents/standards.md` と `spec.md` を読む。
-`subagent` が利用できなければ、`./dot init` と Pi の `/reload` が必要なことを伝えて止める。
-**自分1人で両観点を見た結果を、独立レビューと報告しない。**
+## 3. Herdrのsibling paneへ渡す
 
-```text
-subagent:
-  agentScope: user
-  tasks:
-    - agent: standards
-      task: <固定した差分本文・commit一覧・規約の所在・対象cwd>
-    - agent: spec
-      task: <同じ差分本文・依頼本文と制約・仕様の所在・対象cwd>
+`HERDR_ENV=1`を確認し、Herdr skillを読む。Herdr外ならpane reviewを開始できないことを伝えて止める。
+
+`herdr agent list`で名前の衝突を確認する。例では`standards`と`spec`を使うが、既に使われていれば責務が分かる一意な名前にする。現在のpane layoutを見て、Herdr skillの規則どおりcurrent tabへ2つのbackground sibling paneを作る。
+
+```sh
+herdr pane split --current --direction <right-or-down> --cwd "$PWD" --no-focus
+herdr pane split --current --direction <right-or-down> --cwd "$PWD" --no-focus
 ```
 
-仕様なしなら Standards だけを起動する。差分が大きい場合は、秘密を伏せた snapshot を一時ファイルへ置き、
-その絶対パスを渡す。子は read/grep/find/ls だけを持つため、Git コマンドだけ渡して終わらせない。
-各子へ「自分の観点を直接見切り、追加委譲しない。400語程度を目安に根拠付きで報告する」と伝える。
-user-level の観点定義を使い、repo 側の同名定義へすり替わらないよう `agentScope: user` を指定する。
+返ったpane IDごとに`herdr pane process-info --pane <pane-id>`を読み、`foreground_is_shell`がtrueになるまで待つ。split直後はshell初期化中で`agent_pane_busy`になり得るため、固定sleepだけで起動を決めない。
+
+読む道具だけを持つPiを起動する。親のmodelとthinkingが環境に出ていればnative引数へ渡し、無ければPiのdefaultを使う。
+
+```sh
+pi_args=(--tools read,grep,find,ls)
+if [ -n "${PI_PROVIDER:-}" ] && [ -n "${PI_MODEL:-}" ]; then
+  pi_args+=(--model "$PI_PROVIDER/$PI_MODEL")
+fi
+if [ -n "${PI_REASONING_LEVEL:-}" ]; then
+  pi_args+=(--thinking "$PI_REASONING_LEVEL")
+fi
+herdr agent start standards --kind pi --pane <standards-pane> -- "${pi_args[@]}"
+herdr agent start spec --kind pi --pane <spec-pane> -- "${pi_args[@]}"
+```
+
+各promptにsnapshotの絶対path、対象cwd、必要な資料、対応する観点定義を渡す。子へ「自分の観点を直接見切り、追加委譲しない。400語程度を目安に根拠付きで報告する」と伝える。
+
+```sh
+herdr agent prompt standards "<~/.pi/agent/agents/standards.mdに従うtask>"
+herdr agent prompt spec "<~/.pi/agent/agents/spec.mdに従うtask>"
+herdr agent wait standards --timeout 120000
+herdr agent wait spec --timeout 120000
+herdr agent read standards --source recent-unwrapped --lines 120
+herdr agent read spec --source recent-unwrapped --lines 120
+```
+
+2つの`agent prompt`はwaitなしで先に送るため、review本体は並列に進む。仕様なしならStandards paneだけを作る。waitが失敗するかblockedなら、Herdr skillに従って`agent get`と`agent read`で状態と本文を分けて確認する。
+
+**完了条件**: 起動したagentがcurrent tabの別paneにあり、両方へpromptを送ってから結果を読んだ。自動でtabを作っていない。
 
 ## 4. 混ぜずに報告する
 
-`## Standards` と `## Spec` に分け、各指摘へ対象ファイル・根拠・確認方法を付ける。
-規約違反と smell に基づく判断を分ける。ツールで既に検出できる事項を重ねて指摘しない。
+`## Standards`と`## Spec`に分け、各指摘へ対象ファイル・根拠・確認方法を付ける。
+規約違反とsmellに基づく判断を分ける。ツールで既に検出できる事項を重ねて指摘しない。
 両軸を跨いだ順位付けをせず、軸ごとの件数と重要な問題を最後に述べる。
 失敗・未確認・仕様なしを「指摘0件」と数えない。子が読んだだけなら実行検証済みと書かない。

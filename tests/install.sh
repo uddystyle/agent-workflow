@@ -165,6 +165,27 @@ case_absolute_owned_link() {
 	passed=$((passed + 1))
 }
 
+case_retired_survey_link() {
+	local d="$tmp/retired-survey" dest
+	mkdir -p "$d/agents" "$d/pi" "$d/home/.pi/agent/agents"
+	dest="$d/home/.pi/agent/agents/survey.md"
+	ln -s "$repo/home/.pi/agent/agents/survey.md" "$dest"
+	run_install "$d" bash >/dev/null
+	[ ! -L "$dest" ] || fail '旧survey定義の配信リンクが残った'
+	passed=$((passed + 1))
+}
+
+case_retired_pi_research_link() {
+	local d="$tmp/retired-research" dest
+	mkdir -p "$d/agents" "$d/pi/research" "$d/home"
+	dest="$d/pi/research/SKILL.md"
+	ln -s "$repo/home/.pi/agent/skills/research/SKILL.md" "$dest"
+	run_install "$d" bash >/dev/null
+	expect_link "$d/agents/research" "$repo/skills/research"
+	expect_link "$d/pi/research" "$d/agents/research"
+	passed=$((passed + 1))
+}
+
 case_retired_review_link() {
 	local d="$tmp/retired-review" dest foreign="$tmp/foreign-review.ts"
 	run_install "$d" bash >/dev/null
@@ -186,6 +207,8 @@ case_retired_review_link() {
 }
 
 case_clean_and_repeat
+case_retired_survey_link
+case_retired_pi_research_link
 case_retired_review_link
 case_absolute_owned_link
 case_missing_pi_directory

@@ -41,15 +41,15 @@ consumer を増やすときは、正本からの配り先を1行足す。
 ./dot init
 ```
 
-`dot init` は `packages/Brewfile` の依存、未導入なら Pi、設定、Pi 同梱 subagent、Herdr の Pi 連携と
-`home/.config/herdr/plugins.txt` の plugin を揃える。既存 Pi の更新はせず、シェル・エディタ・認証も変更しない。
+`dot init` は `packages/Brewfile` の依存、未導入ならPi、設定、HerdrのPi連携と
+`home/.config/herdr/plugins.txt` のpluginを揃える。既存Piの更新はせず、シェル・エディタ・認証も変更しない。
 Pi は npm のグローバル導入を前提にする。他の導入経路で同梱例を見つけられない場合は止まる。
 
 | コマンド | 役割 |
 | --- | --- |
 | `./dot init` | 依存導入と初期構築（ネットワーク・HOME への変更あり） |
 | `./dot update` | clean な repo を fast-forward、管理依存と Pi packages を更新し、再配信 |
-| `./dot stow` | 導入済みの設定と subagent を再配信。依存導入・更新なし |
+| `./dot stow` | 導入済みの設定とskillを再配信。依存導入・更新なし |
 | `./dot doctor` | 配信・観点定義・連携を診断 |
 
 `install.sh` は低水準の配信処理として残す。`dot` は既定の `~/.pi/agent` 配置を対象とする。
@@ -109,13 +109,15 @@ Herdr の pane で対象の repo を開き、`pi` を起動する。
 
 ```
 /skill:agents-md       この repo の AGENTS.md を作り直す
-/skill:code-review     起点を指定して規約・仕様を並列 subagent で見る
+/skill:code-review     起点を指定して規約・仕様をHerdrの並列paneで見る
+/skill:research        調査をHerdrのbackground paneへ渡す
 /skill:worktrees       canonical root に worktree を作成・再利用する
 ```
 
-レビューは参考先と同じ二軸の独立 context で実施する。規約が一般的な smell より優先し、
-仕様なしは未評価として報告する。親の会話上の依頼と差分 snapshot を子へ渡す。
-worktrees はモデルからも呼べる。既存 clone の変換や未保存変更の破棄は確認を通す。
+レビューは参考先と同じく、current tabのHerdr sibling paneへStandardsとSpecを起動して独立contextで実施する。
+規約が一般的なsmellより優先し、仕様なしは未評価として報告する。親の会話上の依頼と差分snapshotを子へ渡す。
+researchもbackground sibling paneへ渡し、環境変数で再帰委譲を止める。新しいtabは自動作成しない。
+worktreesはモデルからも呼べる。既存cloneの変換や未保存変更の破棄は確認を通す。
 
 `/parallel-review` は退役した。旧配信リンクは `install.sh` が所有元を確認して撤去する。
 `two-axis-review` は旧名の入口だけを残し、手順は `code-review` に一本化する。

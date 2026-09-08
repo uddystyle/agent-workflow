@@ -23,10 +23,12 @@ chmod +x "$tmp/bin/"*
 export HOME="$tmp/home" PATH="$tmp/bin:$PATH" CALL_LOG="$tmp/calls" NPM_ROOT="$tmp/npm"
 run() { bash "$tmp/repo/dot" "$@"; }
 fail() { printf 'FAIL %s\n' "$*" >&2; exit 1; }
+mkdir -p "$HOME/.pi/agent/extensions/subagent"
+ln -s "$NPM_ROOT/@earendil-works/pi-coding-agent/examples/extensions/subagent/index.ts" "$HOME/.pi/agent/extensions/subagent/index.ts"
+ln -s "$NPM_ROOT/@earendil-works/pi-coding-agent/examples/extensions/subagent/agents.ts" "$HOME/.pi/agent/extensions/subagent/agents.ts"
 run init >/dev/null
 for file in index.ts agents.ts; do
- [ -L "$HOME/.pi/agent/extensions/subagent/$file" ] || fail "subagent $file was not linked"
- [ "$(readlink "$HOME/.pi/agent/extensions/subagent/$file")" = "$NPM_ROOT/@earendil-works/pi-coding-agent/examples/extensions/subagent/$file" ] || fail 'wrong example source'
+ [ ! -e "$HOME/.pi/agent/extensions/subagent/$file" ] || fail "retired Pi subagent $file remains"
 done
 [ ! -e "$HOME/.pi/agent/agents/worker.md" ] || fail 'sample worker was installed'
 grep -q 'brew trust --formula plannotator/tap/plannotator-tui' "$CALL_LOG" || fail 'init must trust only the plannotator-tui formula'
@@ -55,10 +57,10 @@ if DIRTY_REPO=1 run update >/dev/null 2>&1; then fail 'dirty repo accepted'; fi
 : >"$CALL_LOG"
 if FAIL_BREW=1 run init >/dev/null 2>&1; then fail 'dependency failure ignored'; fi
 ! grep -q '^install.sh$' "$CALL_LOG" || fail 'deployment followed dependency failure'
-# 別管理の実体を上書きしない。
-rm "$HOME/.pi/agent/extensions/subagent/index.ts"
+# 退役した置き場にある別管理の実体を上書きしない。
+mkdir -p "$HOME/.pi/agent/extensions/subagent"
 printf 'keep\n' >"$HOME/.pi/agent/extensions/subagent/index.ts"
-if run stow >/dev/null 2>&1; then fail 'foreign extension was overwritten'; fi
+run stow >/dev/null
 [ "$(<"$HOME/.pi/agent/extensions/subagent/index.ts")" = keep ] || fail 'foreign extension changed'
 : >"$CALL_LOG"
 if run nonsense >/dev/null 2>&1; then fail 'unknown command accepted'; fi

@@ -55,6 +55,19 @@ link_one() {
 	linked=$((linked + 1))
 }
 
+# 以前Piだけへ配ったresearch file linkを、共有skillのdirectory linkへ移行できる形に戻す。
+retired_research="$repo/home/.pi/agent/skills/research/SKILL.md"
+for dir in "${consumers[@]}"; do
+	retired_dest="$dir/research/SKILL.md"
+	[ -L "$retired_dest" ] || continue
+	retired_target=$(readlink "$retired_dest")
+	retired_resolved=$(python3 -c 'import os,sys; print(os.path.abspath(os.path.join(os.path.dirname(sys.argv[1]),sys.argv[2])))' "$retired_dest" "$retired_target" 2>/dev/null || true)
+	if [ "$retired_resolved" = "$retired_research" ]; then
+		rm "$retired_dest"
+		rmdir "$(dirname "$retired_dest")" 2>/dev/null || true
+	fi
+done
+
 # 1. repo のスキルを正本へ張る。
 #    ディレクトリごと張るので、repo にファイルを足せば張り直さずに届く。
 mkdir -p "$agents"
@@ -141,6 +154,21 @@ if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then
 	if [ "$resolved" = "$repo/home/.pi/agent/extensions/parallel-review.ts" ]; then
 		rm "$legacy"
 		printf 'REMOVE 旧 parallel-review の配信リンク\n'
+	fi
+fi
+
+# Pi内部subagentでだけ使ったsurvey定義も、repoが配ったlinkだけを撤去する。
+legacy="$stow_target/.pi/agent/agents/survey.md"
+if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then
+	target=$(readlink "$legacy")
+	case "$target" in
+	/*) candidate=$target ;;
+	*) candidate="$(dirname "$legacy")/$target" ;;
+	esac
+	resolved="$(cd -P "$(dirname "$candidate")" 2>/dev/null && pwd)/$(basename "$candidate")" || resolved=""
+	if [ "$resolved" = "$repo/home/.pi/agent/agents/survey.md" ]; then
+		rm "$legacy"
+		printf 'REMOVE 旧 survey 定義の配信リンク\n'
 	fi
 fi
 

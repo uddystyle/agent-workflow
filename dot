@@ -5,34 +5,18 @@ repo=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 usage() { printf 'Usage: ./dot {init|update|stow|doctor}\n'; }
 need() { command -v "$1" >/dev/null 2>&1 || { printf '必要なコマンドが無い: %s\n' "$1" >&2; exit 1; }; }
 
-# Pi の版に付属する例を使う。サンプル agent / prompt は配らない。
-link_subagent() {
- need npm
- local source dest file current
- source="$(npm root -g)/@earendil-works/pi-coding-agent/examples/extensions/subagent"
+# 以前配ったPi同梱subagentだけを撤去する。別管理の同居物は残す。
+remove_retired_subagent() {
+ local dest file current
  dest="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/extensions/subagent"
  for file in index.ts agents.ts; do
-  [ -f "$source/$file" ] || { printf 'Pi の同梱例が無い: %s\n' "$source/$file" >&2; return 1; }
+  [ -L "$dest/$file" ] || continue
+  current=$(readlink "$dest/$file")
+  case "$current" in
+   */@earendil-works/pi-coding-agent/examples/extensions/subagent/"$file") rm "$dest/$file" ;;
+  esac
  done
- # 2ファイルとも事前確認してから張る。他管理の同居物は保つ。
- [ ! -L "$dest" ] || { printf '別管理の subagent ディレクトリ: %s\n' "$dest" >&2; return 1; }
- for file in index.ts agents.ts; do
-  if [ -L "$dest/$file" ]; then
-   current=$(readlink "$dest/$file")
-   case "$current" in
-    */@earendil-works/pi-coding-agent/examples/extensions/subagent/"$file") ;;
-    *) printf '別管理の symlink: %s\n' "$dest/$file" >&2; return 1 ;;
-   esac
-  elif [ -e "$dest/$file" ]; then
-   printf '既存の実体を保護する: %s\n' "$dest/$file" >&2; return 1
-  fi
- done
- mkdir -p "$dest"
- for file in index.ts agents.ts; do
-  if [ -L "$dest/$file" ] && [ "$(readlink "$dest/$file")" = "$source/$file" ]; then continue; fi
-  rm -f "$dest/$file"
-  ln -s "$source/$file" "$dest/$file"
- done
+ rmdir "$dest" 2>/dev/null || true
 }
 
 stow_config() {
@@ -43,7 +27,7 @@ stow_config() {
  fi
  mkdir -p "$HOME/.pi/agent/skills"
  bash "$repo/install.sh"
- link_subagent
+ remove_retired_subagent
 }
 
 trust_brew_formulae() {

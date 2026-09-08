@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# skill の配信契約と、同梱 subagent の登録まで。モデルや Herdr pane は起動しない。
+# skill の配信契約まで。モデルや Herdr pane は起動しない。
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 REPO="$repo" python3 - <<'PY'
@@ -9,10 +9,23 @@ r=Path(os.environ['REPO'])
 def text(p): return (r/p).read_text()
 review=text('skills/code-review/SKILL.md')
 assert 'name: code-review' in review
-assert 'agentScope: user' in review
-assert 'agent: standards' in review and 'agent: spec' in review
+assert 'herdr pane split' in review
+assert 'herdr pane process-info' in review
+assert 'herdr agent start standards' in review
+assert 'herdr agent start spec' in review
+assert 'herdr agent prompt standards' in review
+assert 'herdr agent prompt spec' in review
+assert 'PI_PROVIDER' in review and 'PI_MODEL' in review and 'PI_REASONING_LEVEL' in review
+assert '新しいtab' in review and '作らない' in review
+assert 'subagent:' not in review and 'agentScope:' not in review
 assert 'snapshot' in review and '未コミット' in review
 assert '仕様なし' in review and '未評価' in review
+research=text('skills/research/SKILL.md')
+assert 'RESEARCH_SUBAGENT=1' in research
+assert 'herdr pane split' in research
+assert 'herdr pane process-info' in research
+assert 'herdr agent start research' in research
+assert not (r/'home/.pi/agent/skills/research/SKILL.md').exists()
 alias=text('skills/two-axis-review/SKILL.md')
 assert 'disable-model-invocation: true' in alias
 assert '../code-review/SKILL.md' in alias
@@ -34,27 +47,5 @@ for name in ['standards','spec']:
 assert 'Smell baseline' in text('home/.pi/agent/agents/standards.md')
 for p in (r/'skills').glob('*/SKILL.md'):
  assert p.stat().st_size<=10240,p
-print('PASS review workflow contracts')
+print('PASS Herdr pane review workflow contracts')
 PY
-if ! command -v npm >/dev/null 2>&1; then
- printf 'SKIP subagent registration (npm unavailable)\n'
- exit 0
-fi
-package="$(npm root -g)/@earendil-works/pi-coding-agent"
-if [ ! -f "$package/examples/extensions/subagent/index.ts" ]; then
- printf 'SKIP subagent registration (installed Pi example unavailable)\n'
- exit 0
-fi
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-HOME="$tmp" PI_CODING_AGENT_DIR="$tmp/.pi/agent" PI_PACKAGE="$package" node --input-type=module <<'JS'
-import assert from 'node:assert/strict';
-import { pathToFileURL } from 'node:url';
-const root=process.env.PI_PACKAGE;
-const {loadExtensions}=await import(pathToFileURL(`${root}/dist/core/extensions/loader.js`));
-const result=await loadExtensions([`${root}/examples/extensions/subagent/index.ts`],process.env.HOME);
-assert.deepEqual(result.errors,[]);
-assert.equal(result.extensions.length,1);
-assert.ok(result.extensions[0].tools.has('subagent'));
-console.log('PASS installed Pi subagent registration (no model invocation)');
-JS

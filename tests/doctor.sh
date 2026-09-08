@@ -138,8 +138,8 @@ else
 	bad "herdr の agent 観測設定が足りない。agent_panel_sort=priority、status_indicators=symbols、ui.toast.delivery=herdr を設定する"
 fi
 
-# 4. repo が配る Pi subagent 定義は、読む道具だけに限る。
-# 書き込みは Herdr pane で人が見ながら動かす agent の仕事であり、子へ渡さない。
+# 4. Herdr review paneへ渡す観点定義は、読む道具だけに限る。
+# agent start時の--toolsと同じ境界を文書側でも検査する。
 agent_definitions="${PI_AGENT_DEFINITIONS_DIR:-$repo/home/.pi/agent/agents}"
 if PI_AGENT_DEFINITIONS_DIR="$agent_definitions" python3 - <<'PY'
 import os, pathlib, re, sys
@@ -164,9 +164,9 @@ except Exception:
     sys.exit(1)
 PY
 then
-	ok "Pi subagent 定義は読む道具だけを持つ"
+	ok "Herdr review の観点定義は読む道具だけを持つ"
 else
-	bad "Pi subagent 定義に読む以外の道具がある。編集は Herdr pane で人が見ながら動かす agent に任せる"
+	bad "Herdr review の観点定義に読む以外の道具がある。review paneはread/grep/find/lsに限る"
 fi
 
 # 5. 管理下の置き場に、切れた symlink が無いか
@@ -239,20 +239,7 @@ else
 	skip "origin/main（まだ無い）"
 fi
 
-# 10. 委譲の拡張が入っているか（D-17）
-#    ⚠️ これは repo が張るものではない。道具に付属する例を指す。
-#    観点の定義だけでは動かないので、入っていなければ言う。
-if [ -d "$HOME/.pi/agent" ]; then
-	if [ -e "$HOME/.pi/agent/extensions/subagent/index.ts" ] && [ -e "$HOME/.pi/agent/extensions/subagent/agents.ts" ]; then
-		ok "委譲の拡張が入っている"
-	else
-		warn "委譲の拡張が揃っていない。./dot init または ./dot stow と Pi の /reload を行う（D-17）"
-	fi
-else
-	skip "pi の置き場（無い）"
-fi
-
-# 11. document review skill が呼ぶ standalone command があるか
+# 10. document review skill が呼ぶ standalone command があるか
 #     Herdr plugin 内の binary は PATH に出ないため、skill だけ届いてもreviewを開始できない。
 plannotator_bin="${PLANNOTATOR_TUI_BIN:-}"
 if [ -n "$plannotator_bin" ]; then

@@ -1,7 +1,7 @@
 # agent-workflow
 
-**Generated:** 2026-09-06T07:27:49+09:00
-**Commit:** cbe7653a
+**Generated:** 2026-09-08T11:19:59+09:00
+**Commit:** d342fc3c
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
@@ -54,8 +54,8 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
   `home/.pi/agent/extensions/secret-scan.ts:1-50`, `tests/secret-scan.sh:16-31`
 - Supabase prod は `SUPABASE_ENV=dev|prod` と `supabase db push` を確認経路で扱う。
   `home/.pi/agent/extensions/supabase-prod-confirm.ts:2-5`, `tests/supabase-prod-confirm.sh:14-17`
-- レビューは `skills/code-review/SKILL.md` で規約・仕様を独立した Pi subagent に渡す。
-  `agentScope: user` を指定し、差分 snapshot と親の依頼を渡す。観点定義は `home/.pi/agent/agents/`。
+- レビューは `skills/code-review/SKILL.md` で規約・仕様をcurrent tabの独立したHerdr paneへ渡す。
+  子Piは親のmodel/thinkingと読む道具だけを持つ。調査も`skills/research/SKILL.md`からbackground paneへ渡す。
 - worktree は `skills/worktrees/SKILL.md` をモデルからも呼べる。作成と Herdr tab 起動は別操作。
 - `dot init/update` は依存導入・ネットワーク・HOME 変更を伴う。検査は `tests/bootstrap.sh` の偽コマンドと一時 HOME を使う。
 
