@@ -109,13 +109,13 @@ Herdr の pane で対象の repo を開き、`pi` を起動する。
 
 ```
 /skill:agents-md       この repo の AGENTS.md を作り直す
-/skill:code-review     起点を指定して規約・仕様をHerdrの並列paneで見る
+/skill:code-review     起点を指定して規約・仕様を独立したparallel sub-agentsで見る
 /skill:research        調査をHerdrのbackground paneへ渡す
 /skill:worktrees       canonical root に worktree を作成・再利用する
 ```
 
-レビューは参考先と同じく、current tabのHerdr sibling paneへStandardsとSpecを起動して独立contextで実施する。
-規約が一般的なsmellより優先し、仕様なしは未評価として報告する。親の会話上の依頼と差分snapshotを子へ渡す。
+レビューは参考先と同じく手動で呼び、StandardsとSpecを独立したparallel sub-agentsへ渡す。配置はagentを起動する道具の規則に委ねる。
+規約がskill本文のsmell baselineより優先し、仕様なしは未評価として報告する。親の会話上の依頼と差分snapshotを子へ渡す。
 researchもbackground sibling paneへ渡し、環境変数で再帰委譲を止める。新しいtabは自動作成しない。
 worktreesはモデルからも呼べる。既存cloneの変換や未保存変更の破棄は確認を通す。
 

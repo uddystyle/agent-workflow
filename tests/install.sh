@@ -175,6 +175,24 @@ case_retired_survey_link() {
 	passed=$((passed + 1))
 }
 
+case_retired_review_agent_links() {
+	local d="$tmp/retired-review-agents" name dest foreign="$tmp/foreign-review-agent.md"
+	mkdir -p "$d/agents" "$d/pi" "$d/home/.pi/agent/agents"
+	for name in standards spec; do
+		dest="$d/home/.pi/agent/agents/$name.md"
+		ln -s "$repo/home/.pi/agent/agents/$name.md" "$dest"
+	done
+	run_install "$d" bash >/dev/null
+	for name in standards spec; do
+		[ ! -L "$d/home/.pi/agent/agents/$name.md" ] || fail "旧${name}定義の配信リンクが残った"
+	done
+	printf 'keep\n' >"$foreign"
+	ln -s "$foreign" "$d/home/.pi/agent/agents/standards.md"
+	run_install "$d" bash >/dev/null
+	expect_link "$d/home/.pi/agent/agents/standards.md" "$foreign"
+	passed=$((passed + 1))
+}
+
 case_retired_pi_research_link() {
 	local d="$tmp/retired-research" dest
 	mkdir -p "$d/agents" "$d/pi/research" "$d/home"
@@ -208,6 +226,7 @@ case_retired_review_link() {
 
 case_clean_and_repeat
 case_retired_survey_link
+case_retired_review_agent_links
 case_retired_pi_research_link
 case_retired_review_link
 case_absolute_owned_link

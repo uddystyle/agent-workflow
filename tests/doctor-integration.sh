@@ -36,7 +36,7 @@ status=$?
 set -e
 [ "$status" -eq 0 ] || fail "隔離した配置を doctor が失敗とした: $out"
 [[ $out == *'herdr は注意順・状態記号・画面内 toast で agent を観測する'* ]] || fail 'Herdr の agent 観測設定を確認しなかった'
-[[ $out == *'Herdr review の観点定義は読む道具だけを持つ'* ]] || fail '読み取り専用の観点定義を確認しなかった'
+[[ $out == *'Pi agent定義は読む道具だけを持つ'* ]] || fail '読み取り専用のagent定義を確認しなかった'
 [[ $out == *'plannotator-tui は agent から呼べる'* ]] || fail 'plannotator-tui の実行経路を確認しなかった'
 
 mkdir -p "$tmp/bad-agents"
@@ -46,7 +46,7 @@ out=$(env HOME="$tmp" PI_AGENT_DEFINITIONS_DIR="$tmp/bad-agents" "$doctor_repo/t
 status=$?
 set -e
 [ "$status" -ne 0 ] || fail '書き込み可能な subagent 定義で doctor が成功した'
-[[ $out == *'Herdr review の観点定義に読む以外の道具がある'* ]] || fail '書き込み可能な観点定義を報告しなかった'
+[[ $out == *'Pi agent定義に読む以外の道具がある'* ]] || fail '書き込み可能なagent定義を報告しなかった'
 rm "$tmp/bad-agents/bad.md"
 
 printf '%s\n' '---' 'name: duplicate' 'description: test only' 'tools: read, grep, find, ls, read' '---' >"$tmp/bad-agents/duplicate.md"
@@ -55,7 +55,7 @@ out=$(env HOME="$tmp" PI_AGENT_DEFINITIONS_DIR="$tmp/bad-agents" "$doctor_repo/t
 status=$?
 set -e
 [ "$status" -ne 0 ] || fail '重複した tools 定義で doctor が成功した'
-[[ $out == *'Herdr review の観点定義に読む以外の道具がある'* ]] || fail '重複したtools定義を報告しなかった'
+[[ $out == *'Pi agent定義に読む以外の道具がある'* ]] || fail '重複したtools定義を報告しなかった'
 rm "$tmp/bad-agents/duplicate.md"
 
 printf '[ui]\nagent_panel_sort = "spaces"\n' >"$tmp/bad-herdr.toml"

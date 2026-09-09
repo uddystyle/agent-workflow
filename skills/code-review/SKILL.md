@@ -1,15 +1,21 @@
 ---
 name: code-review
-description: コミット・ブランチ・PR・作業中の変更を、規約と仕様の2軸でレビューする。Herdrの独立したpaneへ並列に渡し、結果を分けて報告する。
+description: コミット・ブランチ・PR・作業中の変更を、規約と仕様の2軸で並列レビューし、結果を分けて報告する。
+disable-model-invocation: true
 ---
 
 # 規約と仕様を別々にレビューする
 
-Standards と Spec を別々のHerdr agentへ渡す。2つは並列に動かし、互いのcontextを共有しない。配置はHerdr skillの規則に従う。
+固定した起点から`HEAD`までの差分を、独立したparallel sub-agentsへ渡す。
+
+- **Standards**: 対象repoが文書化した規約に従っているか。
+- **Spec**: 起点になったissueや仕様の要求どおりか。
+
+2軸は互いのcontextを共有せず、最後に親が結果を集約する。
 
 ## 1. 対象を固定する
 
-起点が指定されていなければ人に聞く。指定されたrefをSHAに解決し、次を採取する。
+起点が指定されていなければ人に聞く。指定されたrefをSHAに解決し、差分とcommit一覧を一度だけ採取する。
 
 ```sh
 git rev-parse --verify '<base>^{commit}'
@@ -18,69 +24,66 @@ git diff <base-sha>...<head-sha>
 git log <base-sha>..<head-sha> --format=%B
 ```
 
-無効なrefや空差分なら委譲する前に止める。
-**未コミットの変更はこの差分に入らない。** 作業中の変更を頼まれた場合は、
-`git diff <base-sha>`と`git ls-files --others --exclude-standard`で範囲を確認し、
-未追跡ファイルは秘密・生成物を除いて読む。作業中のsnapshotを渡し、取得後の変更は別扱いにする。
+無効なrefや空差分ならsub-agentを起動する前に止める。
 
-## 2. 規約と依頼を集める
+作業中の変更を頼まれた場合は`git diff <base-sha>`と`git ls-files --others --exclude-standard`で範囲を固定する。未追跡ファイルは秘密・生成物を除いて読む。**未コミット**のsnapshotを取得した後の変更は別扱いにする。
 
-- 規約: 対象repoの`AGENTS.md`、`CONTRIBUTING.md`、`CODING_STANDARDS.md`等。
-- 仕様: commitのissue参照、依頼された仕様ファイル、関連する設計文書の順で探す。
-  trackerの入口が文書化されていればそれを使う。無ければ推測せず、issueのURLや仕様の場所を人に聞く。
-- 親の会話にしかない依頼・制約・検査失敗から必要になった修正も、Specへ渡す材料に書く。
+## 2. Specを探す
 
-仕様がないと人が確認した場合はSpecを起動せず、最終報告を「仕様なし・未評価」とする。
-規約がない場合もStandardsは`~/.pi/agent/agents/standards.md`のsmell baselineを使う。
-repoの明示的な規約は一般的なsmellより優先する。
+次の順で、依頼が書かれた一次情報を探す。
 
-秘密を伏せたsnapshotを一時ファイルへ置く。各agentへGit commandだけ渡して終わらせず、固定した差分、commit一覧、規約・仕様の所在、親の依頼を含める。
+1. commit messageのissue参照。
+2. 人が指定した仕様fileまたはURL。
+3. branch名に対応する`docs/`、`specs/`、`.scratch/`配下の文書。
+4. 親の会話にある依頼、制約、検査失敗。
 
-## 3. Herdrのsibling paneへ渡す
+trackerの入口がrepoに文書化されていればそれを使う。無ければ推測せず、人にissue URLや仕様の場所を聞く。仕様がないと人が確認した場合はSpecを起動せず、最終報告を「仕様なし・未評価」とする。
 
-`HERDR_ENV=1`を確認し、Herdr skillを読む。Herdr外ならpane reviewを開始できないことを伝えて止める。
+## 3. Standardsを集める
 
-`herdr agent list`で名前の衝突を確認する。例では`standards`と`spec`を使うが、既に使われていれば責務が分かる一意な名前にする。`herdr pane layout --pane "$HERDR_PANE_ID"`で現在のlayoutを見て、Herdr skillの規則どおり2つのbackground sibling paneを作る。
+`AGENTS.md`、`CONTRIBUTING.md`、`CODING_STANDARDS.md`など、対象repoが書いた規約を探す。明示されたrepo規約は以下のsmell baselineより優先する。規約が支持する書き方を一般論で否定せず、toolingが既に検査する事項を重ねて指摘しない。
 
-```sh
-herdr pane split --current --direction <right-or-down> --cwd "$PWD" --no-focus
-herdr pane split --current --direction <right-or-down> --cwd "$PWD" --no-focus
-```
+規約がなくても、Fowlerの観点を**違反ではなく判断材料**として使う。
 
-各splitのJSONから`.result.pane.pane_id`を読み、以後そのIDだけを使う。shell準備の正本は`agent start`の結果である。成功すればPiがinteractive readyになるまで待機済み。`agent_pane_busy`のときだけ同じpaneを`herdr pane process-info --pane <id>`で読み、`foreground_processes`のいずれかのpidが`shell_pid`と一致するかを確認しながら、100ms間隔・最大30秒で再試行する。別のerror、timeout、foreground commandが残る場合は再送せず失敗として扱う。
+- **Mysterious Name**: 責務や値を説明しない名前。意味を示す名前へ変える。
+- **Duplicated Code**: 同じlogicの形が複数箇所にある。共通の責務へまとめる。
+- **Feature Envy**: 他の型のdataへ偏って依存する処理。dataを持つ側への移動を検討する。
+- **Data Clumps**: 同じ値の組が一緒に移動する。1つの概念へまとめる。
+- **Primitive Obsession**: domain概念を素の値で表す。制約を持つ型へ変える。
+- **Repeated Switches**: 同じ分岐が散在する。対応表や多態性を検討する。
+- **Shotgun Surgery**: 1つの変更が多くのfileへ波及する。変更理由を集約する。
+- **Divergent Change**: 1つのmoduleに無関係な変更理由がある。責務を分ける。
+- **Speculative Generality**: 仕様にない抽象化やhook。実在する要求まで戻す。
+- **Message Chains**: callerが内部構造を長く辿る。必要な操作を境界へ置く。
+- **Middle Man**: ほぼ委譲だけの層。境界として必要か見直す。
+- **Refused Bequest**: 継承した契約の大半を拒む。合成などを検討する。
 
-読む道具だけを持つPiを起動する。親のmodelとthinkingが環境に出ていればnative引数へ渡し、無ければPiのdefaultを使う。
+## 4. 2軸を並列に渡す
 
-```sh
-pi_args=(--tools read,grep,find,ls)
-if [ -n "${PI_PROVIDER:-}" ] && [ -n "${PI_MODEL:-}" ]; then
-  pi_args+=(--model "$PI_PROVIDER/$PI_MODEL")
-fi
-if [ -n "${PI_REASONING_LEVEL:-}" ]; then
-  pi_args+=(--thinking "$PI_REASONING_LEVEL")
-fi
-herdr agent start standards --kind pi --pane <standards-pane> -- "${pi_args[@]}"
-herdr agent start spec --kind pi --pane <spec-pane> -- "${pi_args[@]}"
-```
+両方のpromptへ次のguardrailを入れる。
 
-各promptにsnapshotの絶対path、対象cwd、必要な資料、対応する観点定義を渡す。子へ「自分の観点を直接見切り、追加委譲しない。400語程度を目安に根拠付きで報告する」と伝える。
+> 自分のcontextとtoolsでこの観点を直接レビューする。追加のsub-agentへ委譲しない。
 
-```sh
-herdr agent prompt standards "<~/.pi/agent/agents/standards.mdに従うtask>"
-herdr agent prompt spec "<~/.pi/agent/agents/spec.mdに従うtask>"
-herdr agent wait standards --timeout 120000
-herdr agent wait spec --timeout 120000
-herdr agent read standards --source recent-unwrapped --lines 120
-herdr agent read spec --source recent-unwrapped --lines 120
-```
+Standards sub-agentへ渡すもの：
 
-2つの`agent prompt`はwaitなしで先に送るため、review本体は並列に進む。仕様なしならStandards paneだけを作る。waitが失敗するかblockedなら、Herdr skillに従って`agent get`と`agent read`で状態と本文を分けて確認する。
+- 固定した差分とcommit一覧。
+- 見つけた規約fileと、§3のsmell baseline全文。
+- 「文書化された規約への違反」と「baselineによる判断」を分け、fileとhunkを示す。規約を引用し、smellは名前と根拠を付ける。toolingが検査する事項は除く。400語程度で報告する」というbrief。
 
-**完了条件**: 起動したagentが別paneにあり、両方へpromptを送ってから結果を読んだ。
+Spec sub-agentへ渡すもの：
 
-## 4. 混ぜずに報告する
+- 固定した差分とcommit一覧。
+- 仕様のpathまたは取得した本文。
+- 「要求されたのに**足りない**もの、変更にあるが要求されていない**余分**なもの、実装済みに見えるが振る舞いが誤っているものを探し、各指摘で仕様を引用する。400語程度で報告する」というbrief。
 
-`## Standards`と`## Spec`に分け、各指摘へ対象ファイル・根拠・確認方法を付ける。
-規約違反とsmellに基づく判断を分ける。ツールで既に検出できる事項を重ねて指摘しない。
-両軸を跨いだ順位付けをせず、軸ごとの件数と重要な問題を最後に述べる。
-失敗・未確認・仕様なしを「指摘0件」と数えない。子が読んだだけなら実行検証済みと書かない。
+2つを起動してから両方の完了を待つ。仕様なしならStandardsだけを起動する。失敗、blocked、未確認を指摘0件として扱わない。
+
+## 5. 分けて報告する
+
+結果を`## Standards`と`## Spec`に分け、原文または意味を変えない軽い整形で提示する。2軸の指摘を混ぜたり、軸を跨いで順位付けしたりしない。
+
+各指摘に対象file、根拠、実行確認済みか読んだだけかを付ける。最後に軸ごとの件数と、各軸内で最も重要な問題を1行でまとめる。仕様なしは「仕様なし・未評価」とする。
+
+## なぜ2軸か
+
+規約どおりでも間違った要求を実装でき、要求どおりでもrepo規約を破れる。独立して報告することで、一方の成功が他方の失敗を隠すことを防ぐ。

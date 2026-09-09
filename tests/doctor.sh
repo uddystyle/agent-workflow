@@ -138,8 +138,7 @@ else
 	bad "herdr の agent 観測設定が足りない。agent_panel_sort=priority、status_indicators=symbols、ui.toast.delivery=herdr を設定する"
 fi
 
-# 4. Herdr review paneへ渡す観点定義は、読む道具だけに限る。
-# agent start時の--toolsと同じ境界を文書側でも検査する。
+# 4. repoが配るPi agent定義は、読む道具だけに限る。
 agent_definitions="${PI_AGENT_DEFINITIONS_DIR:-$repo/home/.pi/agent/agents}"
 if PI_AGENT_DEFINITIONS_DIR="$agent_definitions" python3 - <<'PY'
 import os, pathlib, re, sys
@@ -164,9 +163,9 @@ except Exception:
     sys.exit(1)
 PY
 then
-	ok "Herdr review の観点定義は読む道具だけを持つ"
+	ok "Pi agent定義は読む道具だけを持つ"
 else
-	bad "Herdr review の観点定義に読む以外の道具がある。review paneはread/grep/find/lsに限る"
+	bad "Pi agent定義に読む以外の道具がある。read/grep/find/lsに限る"
 fi
 
 # 5. 管理下の置き場に、切れた symlink が無いか

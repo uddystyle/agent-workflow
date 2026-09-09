@@ -370,14 +370,13 @@ pi auth check --provider <名前>     # ready / not_ready
 **D-15 への補足**: 「モデルで決める」と言っても、選べるのは**枠のあるモデル**に限られる。
 選択肢が1つしか無いなら、それは D-15 が働いていない状態である。**枠を確かめてから数える。**
 
-## D-17 読む子はHerdrのsibling paneへ置く
+## D-17 読む観点は独立したcontextへ渡す
 
-**現行判断（参考先へ合わせる依頼による更新）**: Standards / Specはcurrent tabの独立したHerdr paneへ渡す。
-`code-review`が差分と仕様を集め、両方へpromptを送ってから待つ。子のPiは`--tools read,grep,find,ls`で
-読む道具だけに限り、親のmodelとthinkingを環境からnative引数へ渡す。仕様がなければSpec paneは作らない。
-新しいtabは自動作成しない。
+**現行判断（参考先へ合わせる依頼による更新）**: `code-review`は手動で呼び、Standards / Specを独立した
+parallel sub-agentsへ渡す。skillは差分、仕様、規約、smell baseline、各promptを持つが、agentの種類や
+配置は起動する道具の規則に委ねる。仕様がなければSpecは起動せず、未評価と報告する。専用のPi agent定義は持たない。
 
-researchも同じtabのbackground paneへ渡す。`RESEARCH_SUBAGENT=1`をpane作成時に入れ、子がさらに子を
+researchはHerdrのbackground paneへ渡す。`RESEARCH_SUBAGENT=1`をpane作成時に入れ、子がさらに子を
 作らない境界にする。Pi同梱subagent extensionは配信をやめ、以前このrepoが張ったlinkだけを撤去する。
 通常の実装作業はHerdrの親Piで続ける。
 

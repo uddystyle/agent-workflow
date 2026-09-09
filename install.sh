@@ -157,20 +157,22 @@ if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then
 	fi
 fi
 
-# Pi内部subagentでだけ使ったsurvey定義も、repoが配ったlinkだけを撤去する。
-legacy="$stow_target/.pi/agent/agents/survey.md"
-if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then
-	target=$(readlink "$legacy")
-	case "$target" in
-	/*) candidate=$target ;;
-	*) candidate="$(dirname "$legacy")/$target" ;;
-	esac
-	resolved="$(cd -P "$(dirname "$candidate")" 2>/dev/null && pwd)/$(basename "$candidate")" || resolved=""
-	if [ "$resolved" = "$repo/home/.pi/agent/agents/survey.md" ]; then
-		rm "$legacy"
-		printf 'REMOVE 旧 survey 定義の配信リンク\n'
+# Pi内部subagentでだけ使ったagent定義も、repoが配ったlinkだけを撤去する。
+for retired_agent in survey standards spec; do
+	legacy="$stow_target/.pi/agent/agents/$retired_agent.md"
+	if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then
+		target=$(readlink "$legacy")
+		case "$target" in
+		/*) candidate=$target ;;
+		*) candidate="$(dirname "$legacy")/$target" ;;
+		esac
+		resolved="$(cd -P "$(dirname "$candidate")" 2>/dev/null && pwd)/$(basename "$candidate")" || resolved=""
+		if [ "$resolved" = "$repo/home/.pi/agent/agents/$retired_agent.md" ]; then
+			rm "$legacy"
+			printf 'REMOVE 旧 %s 定義の配信リンク\n' "$retired_agent"
+		fi
 	fi
-fi
+done
 
 printf '\n張った %s / 済み %s / 止めた %s\n' "$linked" "$skipped" "$blocked"
 printf '正本:   %s\n' "$agents"

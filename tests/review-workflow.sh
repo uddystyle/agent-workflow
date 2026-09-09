@@ -1,29 +1,24 @@
 #!/usr/bin/env bash
-# skill の配信契約まで。モデルや Herdr pane は起動しない。
+# review skillと配信契約まで。sub-agentは起動しない。
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 REPO="$repo" python3 - <<'PY'
 from pathlib import Path
-import os,re
+import os
 r=Path(os.environ['REPO'])
 def text(p): return (r/p).read_text()
 review=text('skills/code-review/SKILL.md')
 assert 'name: code-review' in review
-assert 'herdr pane split' in review
-assert '.result.pane.pane_id' in review
-assert 'herdr pane process-info' in review
-assert 'shell_pid' in review and 'foreground_processes' in review and 'agent_pane_busy' in review
-assert 'foreground_is_shell' not in review
-assert '100ms' in review and '最大30秒' in review
-assert 'herdr agent start standards' in review
-assert 'herdr agent start spec' in review
-assert 'herdr agent prompt standards' in review
-assert 'herdr agent prompt spec' in review
-assert 'PI_PROVIDER' in review and 'PI_MODEL' in review and 'PI_REASONING_LEVEL' in review
-assert 'tab' not in review
-assert 'subagent:' not in review and 'agentScope:' not in review
+assert 'disable-model-invocation: true' in review
+assert 'parallel sub-agents' in review
+assert '追加のsub-agentへ委譲しない' in review
+assert 'Mysterious Name' in review and 'Refused Bequest' in review
+assert '足りない' in review and '余分' in review
 assert 'snapshot' in review and '未コミット' in review
 assert '仕様なし' in review and '未評価' in review
+assert 'herdr ' not in review.lower()
+assert 'pane' not in review.lower() and 'tab' not in review.lower()
+assert 'PI_PROVIDER' not in review and 'PI_MODEL' not in review and 'PI_REASONING_LEVEL' not in review
 research=text('skills/research/SKILL.md')
 assert 'RESEARCH_SUBAGENT=1' in research
 assert 'herdr pane split' in research
@@ -50,13 +45,9 @@ assert 'file://' in plannotator
 assert 'MIT License' in text('skills/plannotator-tui/LICENSE')
 assert '人に頼んで待つ' not in text('home/.pi/agent/skills/implement/SKILL.md')
 assert not (r/'home/.pi/agent/extensions/parallel-review.ts').exists()
-for name in ['standards','spec']:
- body=text(f'home/.pi/agent/agents/{name}.md')
- tools=re.search(r'^tools: (.+)$',body,re.M).group(1)
- assert set(tools.split(', '))=={'read','grep','find','ls'}
- assert not re.search(r'^model:',body,re.M)
-assert 'Smell baseline' in text('home/.pi/agent/agents/standards.md')
+assert not (r/'home/.pi/agent/agents/standards.md').exists()
+assert not (r/'home/.pi/agent/agents/spec.md').exists()
 for p in (r/'skills').glob('*/SKILL.md'):
  assert p.stat().st_size<=10240,p
-print('PASS Herdr pane review workflow contracts')
+print('PASS parallel review workflow contracts')
 PY
