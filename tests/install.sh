@@ -95,6 +95,29 @@ case_missing_pi_directory() {
 	passed=$((passed + 1))
 }
 
+case_upstream_herdr_skill() {
+	local d="$tmp/upstream-herdr" upstream="$tmp/upstream-herdr-skill.md"
+	mkdir -p "$d/agents/herdr" "$d/pi" "$d/home"
+	cp "$repo/skills/herdr/SKILL.md" "$upstream"
+	python3 - "$upstream" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text()
+reference = 'description: "Control Herdr panes, tabs, workspaces, commands, dev servers, other background processes, and agents. Use for subagents when the user or another skill explicitly asks for or requires them. Requires HERDR_ENV=1."'
+upstream = 'description: "Control Herdr, a terminal multiplexer for coding agents. Use only when the user explicitly mentions Herdr or asks to use Herdr to inspect or control panes, tabs, workspaces, commands, or another agent. Do not use merely because a task could benefit from a background terminal, delegation, or parallel work. Requires HERDR_ENV=1."'
+if text.count(reference) != 1:
+    raise SystemExit("managed Herdr description is missing")
+path.write_text(text.replace(reference, upstream))
+PY
+	cp "$upstream" "$d/agents/herdr/SKILL.md"
+	run_install "$d" bash >/dev/null
+	expect_link "$d/agents/herdr" "$repo/skills/herdr"
+	expect_link "$d/pi/herdr" "$d/agents/herdr"
+	grep -q 'another skill explicitly asks for or requires them' "$d/agents/herdr/SKILL.md" || fail '他skillからHerdrを要求できない'
+	passed=$((passed + 1))
+}
+
 case_real_skill_directory() {
 	local d="$tmp/real-skill" output status
 	mkdir -p "$d/agents/agents-md"
@@ -232,6 +255,7 @@ case_retired_pi_research_link
 case_retired_review_link
 case_absolute_owned_link
 case_missing_pi_directory
+case_upstream_herdr_skill
 case_real_skill_directory
 case_foreign_link
 case_without_stow

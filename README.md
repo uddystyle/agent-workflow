@@ -16,6 +16,7 @@ Herdr の pane で Pi を立ち上げ、Codex と必要な拡張を選んで使�
 
 スキルは `~/.agents/skills/` を正本に置き、現在の consumer である Pi へ配る。
 consumer を増やすときは、正本からの配り先を1行足す。
+Herdr skillは同梱本文を保ち、別skillが明示的に要求した場合も使えるdescriptionだけをrepoで管理する。
 
 **プロジェクトの中には何も置かない。** 例外は各 repo の `AGENTS.md` 1枚だけで、それは生成物である。
 
@@ -59,7 +60,7 @@ Pi は npm のグローバル導入を前提にする。他の導入経路で同
 `dot update` はこの repo と既存 Pi packages の更新も含むため、変更内容を確認できるときに実行する。
 
 `skills/` の各ディレクトリを `~/.agents/skills/` を経由して `~/.pi/agent/skills/` へ、`home/` の中身を `~` へ symlink する。冪等。
-**既に実体のファイルやディレクトリがある場合は、上書きせず止まる。**
+**既に実体のファイルやディレクトリがある場合は、上書きせず止まる。** 例外はrepo版とdescription以外が一致するHerdr同梱skillで、初回だけrepo管理のlinkへ移行する。
 
 `home/` は `~` と同じ形の木にしておくだけでよい。設置の手続きは書かない——stow が形から決める。
 

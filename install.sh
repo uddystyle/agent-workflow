@@ -68,6 +68,30 @@ for dir in "${consumers[@]}"; do
 	fi
 done
 
+# Herdr 同梱 skill の本文を保ったまま、発火条件だけを repo 管理版へ移す。
+# 完全に同梱版と一致する実体だけが対象で、利用者が変更したものは通常の衝突として止める。
+herdr_dest="$agents/herdr"
+herdr_src="$repo/skills/herdr/SKILL.md"
+if [ -d "$herdr_dest" ] && [ ! -L "$herdr_dest" ] && [ -f "$herdr_dest/SKILL.md" ]; then
+	if [ "$(find "$herdr_dest" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = 1 ] && \
+		python3 - "$herdr_dest/SKILL.md" "$herdr_src" <<'PY'
+from pathlib import Path
+import sys
+
+installed = Path(sys.argv[1]).read_text()
+managed = Path(sys.argv[2]).read_text()
+upstream = 'description: "Control Herdr, a terminal multiplexer for coding agents. Use only when the user explicitly mentions Herdr or asks to use Herdr to inspect or control panes, tabs, workspaces, commands, or another agent. Do not use merely because a task could benefit from a background terminal, delegation, or parallel work. Requires HERDR_ENV=1."'
+reference = 'description: "Control Herdr panes, tabs, workspaces, commands, dev servers, other background processes, and agents. Use for subagents when the user or another skill explicitly asks for or requires them. Requires HERDR_ENV=1."'
+if installed.count(upstream) != 1 or managed.count(reference) != 1:
+    raise SystemExit(1)
+raise SystemExit(0 if installed.replace(upstream, reference) == managed else 1)
+PY
+	then
+		rm -rf "$herdr_dest"
+		printf 'MOVE herdr 同梱 skill を repo 管理版へ移す\n'
+	fi
+fi
+
 # 1. repo のスキルを正本へ張る。
 #    ディレクトリごと張るので、repo にファイルを足せば張り直さずに届く。
 mkdir -p "$agents"

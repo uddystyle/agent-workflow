@@ -45,7 +45,8 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 ## Conventions
 
 - `install.sh` は `skills/*/` を `~/.agents/skills` 経由で正本化し、存在する `~/.pi/agent/skills` へ配る。
-  既存配下が実体なら止める。`install.sh:12-18`, `install.sh:58-77`
+  既存配下が実体なら止める。Herdr同梱skillだけは、repo版とdescription以外が一致するときにrepo管理へ移す。
+  `install.sh:12-18`, `install.sh:58-105`
 - `home/` は `stow --no-folding` を前提に張る。
   `stow` 無しでは `home/.config/herdr/config.toml` を張らない。`install.sh:80-113`, `tests/install.sh:124-140`
 - `home/.pi/agent/*` は`.gitignore`で制御され、列挙した設定だけを復元する。`.gitignore:12-27`

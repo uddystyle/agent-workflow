@@ -554,6 +554,17 @@ ls ~/.agents/skills/     # いま配られている正本（同梱・自作を�
 ⚠️ 重複は**差分の外**——別の repo に置かれた正本との間——にあり、差分を見る観点はそこに届かない。
 **読む観点を足しても解けない。順序でしか解けない。**
 
+### Herdr skillの発火条件だけを参考先へ合わせる
+
+Herdr同梱skillの本文を正本として保ち、descriptionだけを変更する。ユーザーがHerdrを直接指定した場合に加え、
+**別skillがsubagentやbackground processのために明示的にHerdrを要求した場合**も発火対象にする。
+
+**理由**: Researchのようなskillが既に配置と再帰防止を決めている場合、再びユーザーへHerdr利用の明示を求めると、
+skill間の委譲がそこで止まる。一方、「並列化できそう」という理由だけでHerdrを起動する条件には戻さない。
+
+`skills/herdr/SKILL.md`は`herdr --skill`との差をdescriptionだけに保つ。同梱版が実体として置かれている初回は、
+本文が一致するときだけ`install.sh`がrepo管理へ移す。本文が変わっていれば上書きせず止める。
+
 ## D-21 checkout は canonical worktree root に並べる
 
 repo 本体を bare（`.bare`）にし、`main` も topic も**対等な linked worktree** として root の直下に置く。

@@ -36,6 +36,9 @@ alias=text('skills/two-axis-review/SKILL.md')
 assert 'disable-model-invocation: true' in alias
 assert '../code-review/SKILL.md' in alias
 assert 'disable-model-invocation: true' not in text('skills/worktrees/SKILL.md')
+herdr=text('skills/herdr/SKILL.md')
+assert 'another skill explicitly asks for or requires them' in herdr
+assert 'Start and coordinate an agent' in herdr
 plannotator=text('skills/plannotator-tui/SKILL.md')
 assert 'name: plannotator-tui' in plannotator
 assert 'HERDR_ENV=1' in plannotator
@@ -48,6 +51,7 @@ assert not (r/'home/.pi/agent/extensions/parallel-review.ts').exists()
 assert not (r/'home/.pi/agent/agents/standards.md').exists()
 assert not (r/'home/.pi/agent/agents/spec.md').exists()
 for p in (r/'skills').glob('*/SKILL.md'):
- assert p.stat().st_size<=10240,p
+ if p.parent.name != 'herdr':
+  assert p.stat().st_size<=10240,p
 print('PASS parallel review workflow contracts')
 PY
