@@ -1,6 +1,7 @@
 ---
 name: tdd
 description: 検査を先に書いて実装を進める。振る舞いを追加するとき、直したバグを二度と出さないようにするときに使う。
+disable-model-invocation: true
 ---
 
 # 検査を先に書く

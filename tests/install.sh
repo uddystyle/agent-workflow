@@ -217,6 +217,16 @@ case_retired_review_agent_links() {
 	passed=$((passed + 1))
 }
 
+case_retired_pi_implement_link() {
+	local d="$tmp/retired-implement" dest
+	mkdir -p "$d/agents" "$d/pi" "$d/home/.pi/agent/skills/implement"
+	dest="$d/home/.pi/agent/skills/implement/SKILL.md"
+	ln -s "$repo/home/.pi/agent/skills/implement/SKILL.md" "$dest"
+	run_install "$d" bash >/dev/null
+	[ ! -L "$dest" ] || fail '旧implement skillの配信リンクが残った'
+	passed=$((passed + 1))
+}
+
 case_retired_pi_research_link() {
 	local d="$tmp/retired-research" dest
 	mkdir -p "$d/agents" "$d/pi/research" "$d/home"
@@ -251,6 +261,7 @@ case_retired_review_link() {
 case_clean_and_repeat
 case_retired_survey_link
 case_retired_review_agent_links
+case_retired_pi_implement_link
 case_retired_pi_research_link
 case_retired_review_link
 case_absolute_owned_link

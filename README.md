@@ -115,7 +115,12 @@ Herdr の pane で対象の repo を開き、`pi` を起動する。
 /skill:code-review     起点を指定して規約・仕様を独立したparallel sub-agentsで見る
 /skill:research        調査をHerdrのbackground paneへ渡す
 /skill:worktrees       canonical root に worktree を作成・再利用する
+/skill:tdd             合意したseamでred-greenを始める
+/skill:plannotator-tui 文書を人のレビューへ渡す
 ```
+
+`code-review`、`tdd`、`plannotator-tui`は手動で呼ぶ。`implement`の一括入口は置かず、必要な段を個別に選ぶ。
+TypeScript／Effectの変更では`coding-standards`が型・境界・回復・lintの規律を補う。
 
 レビューは参考先と同じく手動で呼び、StandardsとSpecを独立したparallel sub-agentsへ渡す。配置はagentを起動する道具の規則に委ねる。
 規約がskill本文のsmell baselineより優先し、仕様なしは未評価として報告する。親の会話上の依頼と差分snapshotを子へ渡す。

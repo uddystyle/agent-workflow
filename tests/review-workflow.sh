@@ -36,17 +36,33 @@ alias=text('skills/two-axis-review/SKILL.md')
 assert 'disable-model-invocation: true' in alias
 assert '../code-review/SKILL.md' in alias
 assert 'disable-model-invocation: true' not in text('skills/worktrees/SKILL.md')
+standards=text('skills/coding-standards/SKILL.md')
+assert 'provenance' in standards
+assert 'type-aware' in standards
+assert 'invocation' in standards
+assert '結果不明' in standards and 'compensation' in standards
+assert 'public interface' in standards and 'compile-time' in standards
 herdr=text('skills/herdr/SKILL.md')
 assert 'another skill explicitly asks for or requires them' in herdr
 assert 'Start and coordinate an agent' in herdr
 plannotator=text('skills/plannotator-tui/SKILL.md')
 assert 'name: plannotator-tui' in plannotator
+assert 'disable-model-invocation: true' in plannotator
+tdd=text('home/.pi/agent/skills/tdd/SKILL.md')
+assert 'disable-model-invocation: true' in tdd
+assert 'disable-model-invocation: true' not in text('skills/writing-for-agents/SKILL.md')
+domain=text('home/.pi/agent/skills/domain-modeling/SKILL.md')
+assert '## 4. 判断' not in domain
+grill=text('home/.pi/agent/skills/grill-with-docs/SKILL.md')
+assert 'ADR' not in grill and '判断' not in grill
 assert 'HERDR_ENV=1' in plannotator
 assert 'plannotator-tui herdr open' in plannotator
 assert 'End your turn' in plannotator
 assert 'file://' in plannotator
 assert 'MIT License' in text('skills/plannotator-tui/LICENSE')
-assert '人に頼んで待つ' not in text('home/.pi/agent/skills/implement/SKILL.md')
+assert not (r/'home/.pi/agent/skills/implement/SKILL.md').exists()
+assert not (r/'skills/cua-driver').exists()
+assert not (r/'skills/computer-use-mcp').exists()
 assert not (r/'home/.pi/agent/extensions/parallel-review.ts').exists()
 assert not (r/'home/.pi/agent/agents/standards.md').exists()
 assert not (r/'home/.pi/agent/agents/spec.md').exists()

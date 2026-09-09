@@ -668,3 +668,14 @@ MCP sampling、elicitation、auto auth、script modeも初期状態では無効�
 認証済みbrowser dataと閲覧先が意図せず渡る。source HEAD `c54a4938`、npm integrity、license、CLI option、
 typecheckを隔離確認した。検査用Chromeを使ったupstream testは、macOSで巨大なfull-page screenshot 1件だけ
 Chromeの`Page is too large`で失敗した。通常はviewport screenshotを使い、巨大なfull-page captureは避ける。
+
+## D-25 手動入口は、人が段を選ぶ場所だけに置く
+
+参考先の`d0b8183`に合わせ、`code-review`、`tdd`、`plannotator-tui`はmanual-onlyとし、`writing-for-agents`は
+対象文書から自動発火できるままにする。複数段を一括実行する`implement`は廃止し、検査・実装・レビュー・commitを
+必要な場面で個別に選ぶ。`domain-modeling`は`CONTEXT.md`の用語だけを扱い、判断文書の置き場を兼ねない。
+
+TypeScript／Effectの変更で失われやすい型根拠、parse provenance、invocation lifetime、結果不明、compensation、
+public inference、lintの証明範囲は`coding-standards`へ置く。参考先にはrepo全体を再配布できるlicense表示がないため、
+文章はコピーせず、変更diffが示した振る舞いをこのrepoの規律として書き直した。`cua-driver`はdesktop全体への権限と
+具体的用途が釣り合わないため、この更新でも導入しない。

@@ -55,17 +55,21 @@ link_one() {
 	linked=$((linked + 1))
 }
 
-# 以前Piだけへ配ったresearch file linkを、共有skillのdirectory linkへ移行できる形に戻す。
-retired_research="$repo/home/.pi/agent/skills/research/SKILL.md"
-for dir in "${consumers[@]}"; do
-	retired_dest="$dir/research/SKILL.md"
-	[ -L "$retired_dest" ] || continue
-	retired_target=$(readlink "$retired_dest")
-	retired_resolved=$(python3 -c 'import os,sys; print(os.path.abspath(os.path.join(os.path.dirname(sys.argv[1]),sys.argv[2])))' "$retired_dest" "$retired_target" 2>/dev/null || true)
-	if [ "$retired_resolved" = "$retired_research" ]; then
-		rm "$retired_dest"
-		rmdir "$(dirname "$retired_dest")" 2>/dev/null || true
-	fi
+# 以前Piだけへ配ったskill file linkを退役させる。researchは共有skillへ移行し、implementは廃止した。
+# consumerの指定先と、home/をstowした既定位置の両方を見る。
+retired_skill_dirs=("${consumers[@]}" "$stow_target/.pi/agent/skills")
+for retired_skill in research implement; do
+	retired_source="$repo/home/.pi/agent/skills/$retired_skill/SKILL.md"
+	for dir in "${retired_skill_dirs[@]}"; do
+		retired_dest="$dir/$retired_skill/SKILL.md"
+		[ -L "$retired_dest" ] || continue
+		retired_target=$(readlink "$retired_dest")
+		retired_resolved=$(python3 -c 'import os,sys; print(os.path.abspath(os.path.join(os.path.dirname(sys.argv[1]),sys.argv[2])))' "$retired_dest" "$retired_target" 2>/dev/null || true)
+		if [ "$retired_resolved" = "$retired_source" ]; then
+			rm "$retired_dest"
+			rmdir "$(dirname "$retired_dest")" 2>/dev/null || true
+		fi
+	done
 done
 
 # Herdr 同梱 skill の本文を保ったまま、発火条件だけを repo 管理版へ移す。
