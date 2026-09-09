@@ -5,7 +5,7 @@ description: コミット・ブランチ・PR・作業中の変更を、規約�
 
 # 規約と仕様を別々にレビューする
 
-Standards と Spec を別々のHerdr agentへ渡す。2つは同じtabのsibling paneで並列に動かし、互いのcontextを共有しない。新しいtabは作らない。
+Standards と Spec を別々のHerdr agentへ渡す。2つは並列に動かし、互いのcontextを共有しない。配置はHerdr skillの規則に従う。
 
 ## 1. 対象を固定する
 
@@ -40,7 +40,7 @@ repoの明示的な規約は一般的なsmellより優先する。
 
 `HERDR_ENV=1`を確認し、Herdr skillを読む。Herdr外ならpane reviewを開始できないことを伝えて止める。
 
-`herdr agent list`で名前の衝突を確認する。例では`standards`と`spec`を使うが、既に使われていれば責務が分かる一意な名前にする。`herdr pane layout --pane "$HERDR_PANE_ID"`で現在のlayoutを見て、Herdr skillの規則どおりcurrent tabへ2つのbackground sibling paneを作る。
+`herdr agent list`で名前の衝突を確認する。例では`standards`と`spec`を使うが、既に使われていれば責務が分かる一意な名前にする。`herdr pane layout --pane "$HERDR_PANE_ID"`で現在のlayoutを見て、Herdr skillの規則どおり2つのbackground sibling paneを作る。
 
 ```sh
 herdr pane split --current --direction <right-or-down> --cwd "$PWD" --no-focus
@@ -76,7 +76,7 @@ herdr agent read spec --source recent-unwrapped --lines 120
 
 2つの`agent prompt`はwaitなしで先に送るため、review本体は並列に進む。仕様なしならStandards paneだけを作る。waitが失敗するかblockedなら、Herdr skillに従って`agent get`と`agent read`で状態と本文を分けて確認する。
 
-**完了条件**: 起動したagentがcurrent tabの別paneにあり、両方へpromptを送ってから結果を読んだ。自動でtabを作っていない。
+**完了条件**: 起動したagentが別paneにあり、両方へpromptを送ってから結果を読んだ。
 
 ## 4. 混ぜずに報告する
 

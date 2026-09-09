@@ -20,7 +20,7 @@ assert 'herdr agent start spec' in review
 assert 'herdr agent prompt standards' in review
 assert 'herdr agent prompt spec' in review
 assert 'PI_PROVIDER' in review and 'PI_MODEL' in review and 'PI_REASONING_LEVEL' in review
-assert '新しいtab' in review and '作らない' in review
+assert 'tab' not in review
 assert 'subagent:' not in review and 'agentScope:' not in review
 assert 'snapshot' in review and '未コミット' in review
 assert '仕様なし' in review and '未評価' in review
