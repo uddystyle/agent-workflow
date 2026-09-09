@@ -1,7 +1,7 @@
 # agent-workflow
 
-**Generated:** 2026-09-09T22:37:07+09:00
-**Commit:** 8cd7f14b
+**Generated:** 2026-09-09T22:59:48+09:00
+**Commit:** b4f02c3d
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
@@ -38,7 +38,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 - `skills/` — スキル正本（SKILL.md）を置く場所。`README.md:7-13`, `install.sh:58-78`
 - `home/` — 機械起動時の設定本体。`install.sh:80-113`, `README.md:12`, `home/.config/herdr/config.toml:1-84`
 - `home/.pi/agent/extensions/` — Pi 拡張の置き場。`README.md:51-54`, `.gitignore:23-33`
-- `dot` / `packages/Brewfile` — 依存導入・更新・診断の入口。`README.md` の入れ方
+- `dot` / `packages/` — HomebrewとPi packageの導入・更新・診断。`README.md`の入れ方、`packages/pi-packages.txt`
 - `tests/` — bootstrap・review・install・doctor・guardrail・worktree 検査。`README.md` の検査節
 - `DECISIONS.md` — 方針・境界の正本。`DECISIONS.md:1-4`
 
@@ -57,7 +57,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 - レビューは `skills/code-review/SKILL.md` で規約・仕様を独立したparallel sub-agentsへ渡し、配置は起動する道具へ委ねる。
   smell baselineはskill本文に持つ。調査は`skills/research/SKILL.md`からHerdrのbackground paneへ渡す。
 - worktree は `skills/worktrees/SKILL.md` をモデルからも呼べる。作成と Herdr tab 起動は別操作。
-- `dot init/update` は依存導入・ネットワーク・HOME 変更を伴う。検査は `tests/bootstrap.sh` の偽コマンドと一時 HOME を使う。
+- `dot init/update` は依存導入・ネットワーク・HOME変更を伴う。Pi packageは`packages/pi-packages.txt`から導入し、pi-extmgrの更新確認は既存設定を保つ。検査は`tests/bootstrap.sh`の偽コマンドと一時HOMEを使う。
 
 ## Boundaries
 

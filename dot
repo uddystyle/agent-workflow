@@ -34,6 +34,39 @@ trust_brew_formulae() {
  brew trust --formula plannotator/tap/plannotator-tui
 }
 
+ensure_pi_packages() {
+ need pi; need python3
+ local source settings="$HOME/.pi/agent/settings.json"
+ while IFS= read -r source || [ -n "$source" ]; do
+  source=${source%%#*}
+  source=${source//[[:space:]]/}
+  [ -n "$source" ] || continue
+  if ! PI_PACKAGE_SOURCE="$source" PI_SETTINGS="$settings" python3 - <<'PY'
+import json, os, pathlib, sys
+path = pathlib.Path(os.environ["PI_SETTINGS"])
+try:
+    packages = json.loads(path.read_text()).get("packages", [])
+except (OSError, ValueError):
+    sys.exit(1)
+source = os.environ["PI_PACKAGE_SOURCE"]
+for package in packages:
+    configured = package if isinstance(package, str) else package.get("source") if isinstance(package, dict) else None
+    if configured == source:
+        sys.exit(0)
+sys.exit(1)
+PY
+  then
+   pi install "$source"
+  fi
+ done <"$repo/packages/pi-packages.txt"
+
+ local extmgr_cache="$HOME/.pi/agent/.extmgr-cache"
+ if [ ! -e "$extmgr_cache/auto-update.json" ]; then
+  mkdir -p "$extmgr_cache"
+  cp "$repo/packages/pi-extmgr-auto-update.json" "$extmgr_cache/auto-update.json"
+ fi
+}
+
 integrations() {
  need herdr
  herdr integration install pi
@@ -61,6 +94,7 @@ case "${1:-help}" in
     if ! command -v pi >/dev/null 2>&1; then
      npm install -g --ignore-scripts @earendil-works/pi-coding-agent
     fi
+    ensure_pi_packages
     stow_config
     integrations
     ;;
@@ -71,6 +105,7 @@ case "${1:-help}" in
     brew update
     trust_brew_formulae
     brew bundle install --file="$repo/packages/Brewfile"
+    ensure_pi_packages
     pi update --all
     stow_config
     integrations

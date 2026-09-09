@@ -7,6 +7,8 @@ trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/repo/tests" "$tmp/repo/packages" "$tmp/repo/home/.config/herdr" "$tmp/bin" "$tmp/home" "$tmp/npm/@earendil-works/pi-coding-agent/examples/extensions/subagent"
 cp "$repo/dot" "$tmp/repo/dot"
 cp "$repo/packages/Brewfile" "$tmp/repo/packages/Brewfile"
+cp "$repo/packages/pi-packages.txt" "$tmp/repo/packages/pi-packages.txt"
+cp "$repo/packages/pi-extmgr-auto-update.json" "$tmp/repo/packages/pi-extmgr-auto-update.json"
 cp "$repo/home/.config/herdr/plugins.txt" "$tmp/repo/home/.config/herdr/plugins.txt"
 printf 'export default function() {}\n' >"$tmp/npm/@earendil-works/pi-coding-agent/examples/extensions/subagent/index.ts"
 printf 'export {};\n' >"$tmp/npm/@earendil-works/pi-coding-agent/examples/extensions/subagent/agents.ts"
@@ -35,6 +37,12 @@ grep -q 'brew trust --formula plannotator/tap/plannotator-tui' "$CALL_LOG" || fa
 grep -q 'brew bundle install --no-upgrade' "$CALL_LOG" || fail 'init must install without upgrading'
 grep -q '^tap "plannotator/tap"$' "$tmp/repo/packages/Brewfile" || fail 'Plannotator tap missing from managed dependencies'
 grep -q '^brew "plannotator-tui"$' "$tmp/repo/packages/Brewfile" || fail 'plannotator-tui missing from managed dependencies'
+grep -q '^pi install npm:pi-extmgr$' "$CALL_LOG" || fail 'managed Pi package missing'
+python3 - "$HOME/.pi/agent/.extmgr-cache/auto-update.json" <<'PY' || fail 'pi-extmgr schedule missing'
+import json,sys
+x=json.load(open(sys.argv[1]))
+assert x == {"intervalMs": 86400000, "enabled": True, "displayText": "1 day"}
+PY
 grep -q 'herdr integration install pi' "$CALL_LOG" || fail 'Pi integration missing'
 grep -q 'herdr plugin install plannotator/herdr-annotate --yes' "$CALL_LOG" || fail 'plugin manifest not applied'
 ! grep -q 'integration install claude' "$CALL_LOG" || fail 'Claude CLI was configured'

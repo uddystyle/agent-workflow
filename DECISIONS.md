@@ -627,3 +627,16 @@ stow -D -d <古い root>/main -t ~ home     # 🔴 動かす前に。-d が古�
 通常の検査は、ローカルで再現できる install・登録・helper の境目を守る。
 
 **見直す条件**: provider に依存せず、モデルが skill を読み終えたことと公開された結果を観測できる seam ができたとき。
+
+## D-23 footerには実在するPi packageだけを出す
+
+Piのextension status行へpackage数と更新確認間隔を出すため、`pi-extmgr`を管理対象にする。導入元は
+`packages/pi-packages.txt`に置き、`dot init`は不足時だけ導入する。更新確認は1日間隔で初期化するが、
+人が後から変えたcache設定は上書きしない。
+
+**理由**: 参考先の`pkg`と時間はHerdr設定ではなく、`pi-extmgr`の`setStatus`が出すpackage数とscheduled checkである。
+0.3.0のsource、MIT license、typecheck、156 testsを`/private/tmp`で確認してから本環境へ入れた。
+
+MCP statusは導入しない。現在はPi用MCP serverが0件で、既存の`pi-web-access`と重なるremote serviceを
+表示のためだけに足すと、外部送信先とfull-access extensionだけが増える。必要なMCP capabilityが決まり、
+接続先と送信範囲を選べるようになった時点で`pi-mcp`を再検討する。

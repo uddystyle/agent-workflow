@@ -11,6 +11,7 @@ Herdr の pane で Pi を立ち上げ、Codex と必要な拡張を選んで使�
 | `skills/`                  | 動詞ごとのスキル。`~/.agents/skills/` を経由して Pi へ配る |
 | `home/`                    | マシンの設定。`~` と同じ形の木。stow で張る                |
 | `home/.pi/agent/extensions/` | Pi の拡張。秘密スキャンを含む |
+| `packages/pi-packages.txt` | 全環境へ導入するPi package |
 
 スキルは `~/.agents/skills/` を正本に置き、現在の consumer である Pi へ配る。
 consumer を増やすときは、正本からの配り先を1行足す。
@@ -41,8 +42,8 @@ consumer を増やすときは、正本からの配り先を1行足す。
 ./dot init
 ```
 
-`dot init` は `packages/Brewfile` の依存、未導入ならPi、設定、HerdrのPi連携と
-`home/.config/herdr/plugins.txt` のpluginを揃える。既存Piの更新はせず、シェル・エディタ・認証も変更しない。
+`dot init` は`packages/Brewfile`の依存、未導入ならPi、`packages/pi-packages.txt`のpackage、設定、HerdrのPi連携と
+`home/.config/herdr/plugins.txt`のpluginを揃える。pi-extmgrの更新確認は初回だけ1日間隔で初期化し、既存設定は上書きしない。既存Piの更新はせず、シェル・エディタ・認証も変更しない。
 Pi は npm のグローバル導入を前提にする。他の導入経路で同梱例を見つけられない場合は止まる。
 
 | コマンド | 役割 |

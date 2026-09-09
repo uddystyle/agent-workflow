@@ -10,7 +10,7 @@ trap 'rm -rf "$tmp"' EXIT
 # canonical layout が、ここで作る HOME の配置を指し替えないようにする。
 doctor_repo="$tmp/doctor-repo"
 mkdir "$doctor_repo" "$doctor_repo/tests"
-cp -R "$repo/skills" "$repo/home" "$doctor_repo/"
+cp -R "$repo/skills" "$repo/home" "$repo/packages" "$doctor_repo/"
 cp "$repo/install.sh" "$doctor_repo/install.sh"
 cp "$repo/tests/doctor.sh" "$doctor_repo/tests/doctor.sh"
 
@@ -94,6 +94,9 @@ check_providers '{"enabledModels":["alpha/model-a","alpha/model-b"]}' one 'OK   
 check_providers '{"defaultProvider":"alpha"}' one 'OK   認証済みのモデル提供元を 1 系統確認した'
 check_providers '{"defaultProvider":"alpha","enabledModels":["alpha/model-a","beta/model-b"]}' both 'OK   認証済みのモデル提供元を 2 系統確認した'
 check_providers '{"defaultProvider":"alpha"}' none 'WARN 認証済みのモデル提供元を確認できない'
+printf '%s\n' '{"defaultProvider":"alpha","packages":["npm:pi-extmgr"]}' >"$tmp/.pi/agent/settings.json"
+out=$(env HOME="$tmp" PATH="$tmp/model-bin:$PATH" "$doctor_repo/tests/doctor.sh" 2>&1)
+[[ $out == *'管理対象のPi packagesは設定済み'* ]] || fail '管理対象のPi packageを確認しなかった'
 rm "$tmp/.pi/agent/settings.json"
 
 # canonical root は bare repository を .git から参照する。doctor は bare root や

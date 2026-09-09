@@ -1,0 +1,2 @@
+# Pi packages installed for every user environment.
+npm:pi-extmgr

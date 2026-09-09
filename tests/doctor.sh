@@ -225,7 +225,37 @@ else
 	skip "pi（入っていない）"
 fi
 
-# 9. ローカルの main が origin より先行していないか
+# 9. 管理対象のPi packagesがsettingsへ入っているか。
+pi_packages="$repo/packages/pi-packages.txt"
+pi_settings="$HOME/.pi/agent/settings.json"
+if command -v pi >/dev/null 2>&1 && [ -r "$pi_settings" ] && [ -r "$pi_packages" ]; then
+	if PI_PACKAGES_FILE="$pi_packages" PI_SETTINGS_FILE="$pi_settings" python3 - <<'PY'
+import json, os, pathlib, sys
+required = {
+    line.split("#", 1)[0].strip()
+    for line in pathlib.Path(os.environ["PI_PACKAGES_FILE"]).read_text().splitlines()
+    if line.split("#", 1)[0].strip()
+}
+try:
+    values = json.loads(pathlib.Path(os.environ["PI_SETTINGS_FILE"]).read_text()).get("packages", [])
+except (OSError, ValueError):
+    sys.exit(1)
+configured = {
+    value if isinstance(value, str) else value.get("source") if isinstance(value, dict) else None
+    for value in values
+}
+sys.exit(0 if required <= configured else 1)
+PY
+	then
+		ok "管理対象のPi packagesは設定済み"
+	else
+		warn "管理対象のPi packageが不足している。./dot initで導入する"
+	fi
+else
+	skip "Pi package設定（pi、settings、またはmanifestが無い）"
+fi
+
+# 10. ローカルの main が origin より先行していないか
 #    🔴 worktree は origin から分岐する。溜めると古い土台で作業が始まる。
 if git -C "$repo" rev-parse --verify origin/main >/dev/null 2>&1; then
 	ahead=$(git -C "$repo" rev-list --count origin/main..main 2>/dev/null || echo 0)
@@ -238,7 +268,7 @@ else
 	skip "origin/main（まだ無い）"
 fi
 
-# 10. document review skill が呼ぶ standalone command があるか
+# 11. document review skill が呼ぶ standalone command があるか
 #     Herdr plugin 内の binary は PATH に出ないため、skill だけ届いてもreviewを開始できない。
 plannotator_bin="${PLANNOTATOR_TUI_BIN:-}"
 if [ -n "$plannotator_bin" ]; then
