@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pi-mcp-adapterのcompact statusを、他のfooter項目と同じdim色で再描画する。
+# pi-mcp-adapterの接続数を、参考先と同じ表記・他のfooter項目と同じdim色で再描画する。
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 
@@ -16,13 +16,13 @@ assert.equal(formatCompactMcpStatus({
   servers: [{ status: "not-connected", disabled: false }],
   connectedCount: 0,
   disabledCount: 0,
-}), "MCP 0/1");
+}), "0 MCP");
 assert.equal(formatCompactMcpStatus({
   version: 1,
   servers: [{ status: "connected", disabled: false }],
   connectedCount: 1,
   disabledCount: 0,
-}), "MCP 1/1");
+}), "1 MCP");
 
 const handlers = new Map();
 const events = new Map();
@@ -40,7 +40,7 @@ const ctx = {
 };
 await handlers.get("session_start")({}, ctx);
 await Promise.resolve();
-assert.deepEqual(statuses.at(-1), ["mcp", "dim:MCP 0/1"]);
+assert.deepEqual(statuses.at(-1), ["mcp", "dim:0 MCP"]);
 
 events.get("pi-mcp-adapter/status/v1")({
   version: 1,
@@ -50,7 +50,7 @@ events.get("pi-mcp-adapter/status/v1")({
 });
 statuses.push(["mcp", "accent:MCP 1/1"]); // adapter本体がevent発行後に書くstatus
 await Promise.resolve();
-assert.deepEqual(statuses.at(-1), ["mcp", "dim:MCP 1/1"]);
+assert.deepEqual(statuses.at(-1), ["mcp", "dim:1 MCP"]);
 
 console.log("PASS MCP footer color");
 NODE

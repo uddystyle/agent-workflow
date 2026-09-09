@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const MCP_STATUS_EVENT = "pi-mcp-adapter/status/v1";
-const INITIAL_STATUS = "MCP 0/1";
+const INITIAL_STATUS = "0 MCP";
 
 type McpStatusSnapshot = {
   version: number;
@@ -13,8 +13,7 @@ type McpStatusSnapshot = {
 export function formatCompactMcpStatus(snapshot: McpStatusSnapshot): string | undefined {
   if (snapshot.version !== 1 || snapshot.servers.length === 0) return undefined;
   const connected = snapshot.connectedCount ?? snapshot.servers.filter((server) => server.status === "connected" && !server.disabled).length;
-  const disabled = snapshot.disabledCount ?? snapshot.servers.filter((server) => server.disabled).length;
-  return `MCP ${connected}/${snapshot.servers.length - disabled}`;
+  return `${connected} MCP`;
 }
 
 export default function mcpFooterDim(pi: ExtensionAPI) {

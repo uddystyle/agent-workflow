@@ -651,7 +651,7 @@ Web applicationのconsole、network、performance、操作再現にはApache-2.0
 `home/.pi/agent/mcp.json`からlocal stdioで遅延起動し、`--isolated`の一時profileに限る。既存Chromeへ接続する
 optionは持たせず、全toolをPiのapproval対象にする。usage statistics、CrUX送信、update checkは無効にする。
 MCP sampling、elicitation、auto auth、script modeも初期状態では無効にする。adapterがcompact footerを`accent`へ固定するため、
-公開status eventを`mcp-footer-dim.ts`で受け、他のfooter項目と同じ`dim`で再描画する。package本体はpatchしない。
+公開status eventを`mcp-footer-dim.ts`で受け、接続数を参考先と同じ`0 MCP`形式・他の項目と同じ`dim`で再描画する。package本体はpatchしない。
 
 **理由**: `pi-web-access`が担わない動的UIの再現とDevTools診断を補える一方、通常profileや統計送信を許すと、
 認証済みbrowser dataと閲覧先が意図せず渡る。source HEAD `c54a4938`、npm integrity、license、CLI option、
