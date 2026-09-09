@@ -637,6 +637,10 @@ Piのextension status行へpackage数と更新確認間隔を出すため、`pi-
 **理由**: 参考先の`pkg`と時間はHerdr設定ではなく、`pi-extmgr`の`setStatus`が出すpackage数とscheduled checkである。
 0.3.0のsource、MIT license、typecheck、156 testsを`/private/tmp`で確認してから本環境へ入れた。
 
-MCP statusは導入しない。現在はPi用MCP serverが0件で、既存の`pi-web-access`と重なるremote serviceを
-表示のためだけに足すと、外部送信先とfull-access extensionだけが増える。必要なMCP capabilityが決まり、
-接続先と送信範囲を選べるようになった時点で`pi-mcp`を再検討する。
+MCP clientにはMITの`pi-mcp-adapter`を使う。`packages/pi-packages.txt`から本体だけを導入し、用途が決まるまで
+serverは設定しない。serverが0件ならadapterはfooter statusを出さず、外部接続もしない。実在しないserverや
+固定の`0 MCP`表示は足さない。必要なcapability、接続先、送信範囲を決めてからserverを追加する。
+
+2.32.1はsourceとnpm integrityを照合し、typecheckとLinux CI成功を確認した。macOSの隔離検査では、build前の
+example生成物2件はbuild後に通り、protocol検査1件は単独再実行で通ったが、request header commandの子process
+cleanup 2件は再現した。この機能は設定せず、upstreamで解消するまで使わない。

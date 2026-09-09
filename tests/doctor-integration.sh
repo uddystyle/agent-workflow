@@ -94,7 +94,7 @@ check_providers '{"enabledModels":["alpha/model-a","alpha/model-b"]}' one 'OK   
 check_providers '{"defaultProvider":"alpha"}' one 'OK   認証済みのモデル提供元を 1 系統確認した'
 check_providers '{"defaultProvider":"alpha","enabledModels":["alpha/model-a","beta/model-b"]}' both 'OK   認証済みのモデル提供元を 2 系統確認した'
 check_providers '{"defaultProvider":"alpha"}' none 'WARN 認証済みのモデル提供元を確認できない'
-printf '%s\n' '{"defaultProvider":"alpha","packages":["npm:pi-extmgr"]}' >"$tmp/.pi/agent/settings.json"
+printf '%s\n' '{"defaultProvider":"alpha","packages":["npm:pi-extmgr","npm:pi-mcp-adapter"]}' >"$tmp/.pi/agent/settings.json"
 out=$(env HOME="$tmp" PATH="$tmp/model-bin:$PATH" "$doctor_repo/tests/doctor.sh" 2>&1)
 [[ $out == *'管理対象のPi packagesは設定済み'* ]] || fail '管理対象のPi packageを確認しなかった'
 rm "$tmp/.pi/agent/settings.json"
