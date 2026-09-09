@@ -170,6 +170,19 @@ if [ -d "$repo/home" ]; then
 	fi
 fi
 
+# repoが配ったOpenCode commandだけを退役させる。OpenCode配下の別管理設定は触らない。
+for retired_command in annotate-last annotate-review; do
+	dest="$stow_target/.config/opencode/commands/$retired_command.md"
+	[ -L "$dest" ] || continue
+	target=$(readlink "$dest")
+	resolved=$(python3 -c 'import os,sys; print(os.path.abspath(os.path.join(os.path.dirname(sys.argv[1]),sys.argv[2])))' "$dest" "$target" 2>/dev/null || true)
+	if [ "$resolved" = "$repo/home/.config/opencode/commands/$retired_command.md" ]; then
+		rm "$dest"
+		printf 'REMOVE 旧OpenCode command %s\n' "$retired_command"
+	fi
+done
+rmdir "$stow_target/.config/opencode/commands" 2>/dev/null || true
+
 # 旧独自ランチャーの配信リンクだけを退役させる。別管理の実体・リンクには触れない。
 legacy="$stow_target/.pi/agent/extensions/parallel-review.ts"
 if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then

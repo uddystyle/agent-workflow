@@ -238,6 +238,25 @@ case_retired_pi_research_link() {
 	passed=$((passed + 1))
 }
 
+case_retired_opencode_links() {
+	local d="$tmp/retired-opencode" name dest foreign="$tmp/foreign-opencode-command.md"
+	mkdir -p "$d/agents" "$d/pi" "$d/home/.config/opencode/commands"
+	for name in annotate-last annotate-review; do
+		dest="$d/home/.config/opencode/commands/$name.md"
+		ln -s "$repo/home/.config/opencode/commands/$name.md" "$dest"
+	done
+	run_install "$d" bash >/dev/null
+	for name in annotate-last annotate-review; do
+		[ ! -L "$d/home/.config/opencode/commands/$name.md" ] || fail "旧OpenCode command $name のlinkが残った"
+	done
+	printf 'keep\n' >"$foreign"
+	mkdir -p "$d/home/.config/opencode/commands"
+	ln -s "$foreign" "$d/home/.config/opencode/commands/annotate-last.md"
+	run_install "$d" bash >/dev/null
+	expect_link "$d/home/.config/opencode/commands/annotate-last.md" "$foreign"
+	passed=$((passed + 1))
+}
+
 case_retired_review_link() {
 	local d="$tmp/retired-review" dest foreign="$tmp/foreign-review.ts"
 	run_install "$d" bash >/dev/null
@@ -263,6 +282,7 @@ case_retired_survey_link
 case_retired_review_agent_links
 case_retired_pi_implement_link
 case_retired_pi_research_link
+case_retired_opencode_links
 case_retired_review_link
 case_absolute_owned_link
 case_missing_pi_directory
