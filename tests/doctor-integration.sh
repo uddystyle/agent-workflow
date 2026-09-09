@@ -37,6 +37,7 @@ set -e
 [ "$status" -eq 0 ] || fail "隔離した配置を doctor が失敗とした: $out"
 [[ $out == *'herdr は注意順・状態記号・画面内 toast で agent を観測する'* ]] || fail 'Herdr の agent 観測設定を確認しなかった'
 [[ $out == *'Pi agent定義は読む道具だけを持つ'* ]] || fail '読み取り専用のagent定義を確認しなかった'
+[[ $out == *'Chrome DevTools MCPは隔離設定済み'* ]] || fail 'Chrome DevTools MCPの隔離設定を確認しなかった'
 [[ $out == *'plannotator-tui は agent から呼べる'* ]] || fail 'plannotator-tui の実行経路を確認しなかった'
 
 mkdir -p "$tmp/bad-agents"
@@ -109,6 +110,7 @@ git -C "$canonical" worktree add "$canonical/main" HEAD >/dev/null 2>&1
 git -C "$canonical" worktree add "$canonical/a-topic" HEAD >/dev/null 2>&1
 # main より辞書順で先に現れる topic worktree 上で、作業中の doctor を実行する。
 cp "$repo/tests/doctor.sh" "$canonical/a-topic/tests/doctor.sh"
+cp "$repo/home/.pi/agent/mcp.json" "$canonical/main/home/.pi/agent/mcp.json"
 mkdir -p "$canonical_home/.pi/agent/skills"
 env HOME="$canonical_home" "$canonical/main/install.sh" >/dev/null
 
@@ -130,6 +132,7 @@ git -C "$fallback_canonical" worktree add "$fallback_canonical/a-fallback" HEAD 
 git -C "$fallback_canonical" worktree add "$fallback_canonical/z-topic" HEAD >/dev/null 2>&1
 [ ! -e "$fallback_canonical/main" ] || fail 'fallback 用 canonical root に main がある'
 cp "$repo/tests/doctor.sh" "$fallback_canonical/z-topic/tests/doctor.sh"
+cp "$repo/home/.pi/agent/mcp.json" "$fallback_canonical/a-fallback/home/.pi/agent/mcp.json"
 mkdir -p "$fallback_home/.pi/agent/skills"
 env HOME="$fallback_home" "$fallback_canonical/a-fallback/install.sh" >/dev/null
 

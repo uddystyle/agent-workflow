@@ -63,6 +63,7 @@ case_clean_and_repeat() {
 		rel=${f#"$repo"/home/}
 		expect_resolves_to "$d/home/$rel" "$f"
 	done < <(find "$repo/home" -type f)
+	expect_resolves_to "$d/home/.pi/agent/mcp.json" "$repo/home/.pi/agent/mcp.json"
 	# 🔴 件数を直書きしない。スキルを1本足すたびに落ちる。
 	# 見るのは不変量である——初回は既存が無いので「済み」と「止めた」が 0、
 	# 再実行は何も張らないので「張った」が 0。張った数そのものは、

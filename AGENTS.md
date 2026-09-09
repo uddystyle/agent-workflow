@@ -1,7 +1,7 @@
 # agent-workflow
 
-**Generated:** 2026-09-09T22:59:48+09:00
-**Commit:** b4f02c3d
+**Generated:** 2026-09-10T00:23:35+09:00
+**Commit:** 4ae7adef
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
@@ -37,7 +37,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 
 - `skills/` — スキル正本（SKILL.md）を置く場所。`README.md:7-13`, `install.sh:58-78`
 - `home/` — 機械起動時の設定本体。`install.sh:80-113`, `README.md:12`, `home/.config/herdr/config.toml:1-84`
-- `home/.pi/agent/extensions/` — Pi 拡張の置き場。`README.md:51-54`, `.gitignore:23-33`
+- `home/.pi/agent/` — Pi拡張とMCP設定。`README.md`の構成表、`.gitignore:12-27`
 - `dot` / `packages/` — HomebrewとPi packageの導入・更新・診断。`README.md`の入れ方、`packages/pi-packages.txt`
 - `tests/` — bootstrap・review・install・doctor・guardrail・worktree 検査。`README.md` の検査節
 - `DECISIONS.md` — 方針・境界の正本。`DECISIONS.md:1-4`
@@ -48,8 +48,8 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
   既存配下が実体なら止める。`install.sh:12-18`, `install.sh:58-77`
 - `home/` は `stow --no-folding` を前提に張る。
   `stow` 無しでは `home/.config/herdr/config.toml` を張らない。`install.sh:80-113`, `tests/install.sh:124-140`
-- `home/.pi/agent/*` は `.gitignore` で制御される（`agents` / `extensions` / `skills` が復元対象）。
-  `.gitignore:12-25`
+- `home/.pi/agent/*` は`.gitignore`で制御され、列挙した設定だけを復元する。`.gitignore:12-27`
+- Chrome DevTools MCPは固定版をisolated profileで遅延起動し、外部統計と全toolの無確認実行を止める。`home/.pi/agent/mcp.json`, `tests/doctor.sh`
 - `secret-scan` は `write`/`edit`/`bash` を走査し、拒否時は `denied`。
   `home/.pi/agent/extensions/secret-scan.ts:1-50`, `tests/secret-scan.sh:16-31`
 - Supabase prod は `SUPABASE_ENV=dev|prod` と `supabase db push` を確認経路で扱う。
@@ -75,7 +75,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 - 環境変数: `AGENTS_SKILLS_DIR`, `PI_SKILLS_DIR`, `STOW_TARGET`（`install.sh:9-15`）
 - 環境変数: `HERDR_DOCTOR_CONFIG`, `HERDR_BIN`, `PI_AGENT_DEFINITIONS_DIR`（`tests/doctor.sh:29-34`, `tests/doctor.sh:131-160`）
 - 環境変数: `SUPABASE_ENV`（`home/.pi/agent/extensions/supabase-prod-confirm.ts:18-23`）
-- 依存ツール: `git`, `stow`, `herdr`, `pi`, `node`, `python3`。導入一覧は `packages/Brewfile`、入口は `dot`。
+- 依存ツール: `git`, `stow`, `herdr`, `pi`, `node`, `python3`, `npx`, Chrome。導入一覧は`packages/`、入口は`dot`、MCP commandは`home/.pi/agent/mcp.json`。
 
 ## Notes
 

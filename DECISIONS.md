@@ -644,3 +644,16 @@ serverは設定しない。serverが0件ならadapterはfooter statusを出さ�
 2.32.1はsourceとnpm integrityを照合し、typecheckとLinux CI成功を確認した。macOSの隔離検査では、build前の
 example生成物2件はbuild後に通り、protocol検査1件は単独再実行で通ったが、request header commandの子process
 cleanup 2件は再現した。この機能は設定せず、upstreamで解消するまで使わない。
+
+## D-24 browser MCPは普段のprofileから隔離する
+
+Web applicationのconsole、network、performance、操作再現にはApache-2.0の`chrome-devtools-mcp` 1.9.0を使う。
+`home/.pi/agent/mcp.json`からlocal stdioで遅延起動し、`--isolated`の一時profileに限る。既存Chromeへ接続する
+optionは持たせず、全toolをPiのapproval対象にする。usage statistics、CrUX送信、update checkは無効にする。
+MCP sampling、elicitation、auto auth、script modeも初期状態では無効にする。adapterがcompact footerを`accent`へ固定するため、
+公開status eventを`mcp-footer-dim.ts`で受け、他のfooter項目と同じ`dim`で再描画する。package本体はpatchしない。
+
+**理由**: `pi-web-access`が担わない動的UIの再現とDevTools診断を補える一方、通常profileや統計送信を許すと、
+認証済みbrowser dataと閲覧先が意図せず渡る。source HEAD `c54a4938`、npm integrity、license、CLI option、
+typecheckを隔離確認した。検査用Chromeを使ったupstream testは、macOSで巨大なfull-page screenshot 1件だけ
+Chromeの`Page is too large`で失敗した。通常はviewport screenshotを使い、巨大なfull-page captureは避ける。

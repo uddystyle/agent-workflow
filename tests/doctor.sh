@@ -168,7 +168,40 @@ else
 	bad "Pi agent定義に読む以外の道具がある。read/grep/find/lsに限る"
 fi
 
-# 5. 管理下の置き場に、切れた symlink が無いか
+# 5. Chrome DevTools MCPは、一時profile・固定version・外部統計なしで使う。
+mcp_config="$HOME/.pi/agent/mcp.json"
+if MCP_CONFIG="$mcp_config" python3 - <<'PY'
+import json, os, pathlib, sys
+try:
+    config = json.loads(pathlib.Path(os.environ["MCP_CONFIG"]).read_text())
+    settings = config["settings"]
+    server = config["mcpServers"]["chrome-devtools"]
+    args = server["args"]
+    assert settings["mcpFooterStatus"] == "compact"
+    assert settings["hostConfigDiscovery"] == "off"
+    assert settings["scriptMode"] is False
+    assert settings["sampling"] is False
+    assert settings["elicitation"] is False
+    assert settings["autoAuth"] is False
+    assert server["command"] == "npx"
+    assert args[:2] == ["-y", "chrome-devtools-mcp@1.9.0"]
+    assert "--isolated" in args
+    assert "--no-usage-statistics" in args
+    assert "--no-performance-crux" in args
+    assert not {"--browser-url", "--ws-endpoint", "--auto-connect", "--extension"} & set(args)
+    assert server["env"]["CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS"] == "1"
+    assert server["lifecycle"] == "lazy"
+    assert server["approveTools"] is True
+except Exception:
+    sys.exit(1)
+PY
+then
+	ok "Chrome DevTools MCPは隔離設定済み"
+else
+	bad "Chrome DevTools MCPの隔離設定が足りない。固定version、isolated profile、統計停止、tool approvalを保つ"
+fi
+
+# 6. 管理下の置き場に、切れた symlink が無いか
 broken=0
 for dir in "$agents" "${consumers[@]}"; do
 	[ -d "$dir" ] || continue
