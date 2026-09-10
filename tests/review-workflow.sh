@@ -42,6 +42,10 @@ assert 'type-aware' in standards
 assert 'invocation' in standards
 assert '結果不明' in standards and 'compensation' in standards
 assert 'public interface' in standards and 'compile-time' in standards
+assert 'public export' in standards and 'type-only use' in standards
+assert '各option' in standards and 'caller' in standards
+assert '既存のdecision' in standards
+assert '型だけを置き換えた変更' in standards
 herdr=text('skills/herdr/SKILL.md')
 assert 'another skill explicitly asks for or requires them' in herdr
 assert 'Start and coordinate an agent' in herdr

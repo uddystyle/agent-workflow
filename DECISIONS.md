@@ -654,9 +654,10 @@ Chromeの`Page is too large`で失敗した。通常はviewport screenshotを使
 必要な場面で個別に選ぶ。`domain-modeling`は`CONTEXT.md`の用語だけを扱い、判断文書の置き場を兼ねない。
 
 TypeScript／Effectの変更で失われやすい型根拠、parse provenance、invocation lifetime、結果不明、compensation、
-public inference、lintの証明範囲は`coding-standards`へ置く。参考先にはrepo全体を再配布できるlicense表示がないため、
-文章はコピーせず、変更diffが示した振る舞いをこのrepoの規律として書き直した。`cua-driver`はdesktop全体への権限と
-具体的用途が釣り合わないため、この更新でも導入しない。
+public inference、lintの証明範囲は`coding-standards`へ置く。public exportは実consumerまで調べ、optionはcallerの
+必要性で正当化する。cleanupはruntime処理の削除と型だけの変更を分け、長く残る判断はownerか既存のdecision文書へ残す。
+参考先にはrepo全体を再配布できるlicense表示がないため、文章はコピーせず、変更diffが示した振る舞いをこのrepoの規律として
+書き直した。`cua-driver`はdesktop全体への権限と具体的用途が釣り合わないため、この更新でも導入しない。
 
 ## D-26 調査待ちは依存するfrontierだけを止める
 

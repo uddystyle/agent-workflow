@@ -11,9 +11,11 @@ description: TypeScriptやEffectの実装・変更・レビューで、型、境
 
 callerに見えるinput、output、expected error、service interfaceを先に固定する。domain計算はpureにし、effectの順序とapplication policyはその操作のownerへ置く。framework、provider、storageの型をownerの外へ漏らさない。
 
-新しいhelper、service、adapterを作る前に既存ownerを探す。削除したときcallerへ意味のある複雑さが漏れるものだけを抽象化する。branch数が減るだけのforwarding helper、未使用のoption bag、将来用dispatchは作らない。
+新しいhelper、service、adapterを作る前に既存ownerを探す。削除したときcallerへ意味のある複雑さが漏れるものだけを抽象化する。branch数が減るだけのforwarding helper、将来用dispatchは作らない。named optionsはcallerがpolicyを選ぶか引数順の誤りを防ぐときだけ使い、各optionがcallerに必要な振る舞いを変えることを確認する。
 
-**完了条件**: public contractと既存ownerを示せ、新しい抽象化が必要な理由をcaller側の負荷で説明できる。
+public exportを追加・rename・削除する前に、package entrypoint、re-export、type-only use、dynamic use、repo外consumerとcompatibility policyを調べる。localに利用箇所がないだけでは、公開APIが不要だと判断しない。長く残るboundaryや例外の理由は、ownerの近くか対象repoに既存のdecision文書へ残す。helperごとに新しい文書体系を作らない。
+
+**完了条件**: public contractと既存ownerを示せ、新しい抽象化と各optionが必要な理由をcaller側の負荷で説明でき、公開面と重要な判断のconsumer／記録先を示せる。
 
 ## 2. Provenanceに沿ってparseする
 
@@ -72,6 +74,6 @@ public inferenceもbehaviorである。普通のcall siteを使うcompile-time t
 
 active root config、task graph、installed plugin entrypoint、対象pathを読む。type-aware APIを持たないAST／scope ruleは、importを越えた型推論やinterprocedural provenanceを証明できない。ruleが観測できるsyntaxとlocal bindingだけを主張する。
 
-custom ruleには実際のrule-test harnessでpositive、negative、alias、同名別API、false-positive境界を置く。数値上限は許可境界と直上の拒否値を試す。semantic cleanupをautofixへ任せず、unused exportはpublic entrypoint、dynamic use、type-only use、repo外consumerまで調べる。
+custom ruleには実際のrule-test harnessでpositive、negative、alias、同名別API、false-positive境界を置く。数値上限は許可境界と直上の拒否値を試す。semantic cleanupをautofixへ任せず、消えたI/O・parse・validationと型だけを置き換えた変更を分け、それぞれの不変条件とobservable behaviorを確認する。
 
 **完了条件**: enforcement claimごとに実装ownerと観測可能な証拠を示し、lint成功・型検査・runtime testがそれぞれ何を証明したかを分けて報告できる。
