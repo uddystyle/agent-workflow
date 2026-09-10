@@ -125,7 +125,9 @@ TypeScript／Effectの変更では`coding-standards`が型・境界・回復・l
 レビューは参考先と同じく手動で呼び、StandardsとSpecを独立したparallel sub-agentsへ渡す。配置はagentを起動する道具の規則に委ねる。
 規約がskill本文のsmell baselineより優先し、仕様なしは未評価として報告する。親の会話上の依頼と差分snapshotを子へ渡す。
 researchもbackground sibling paneへ渡し、環境変数で再帰委譲を止める。新しいtabは自動作成しない。
+grillingは環境の事実をfact sub-agentへ渡し、依存するfrontierだけを待たせる。
 worktreesはモデルからも呼べる。既存cloneの変換や未保存変更の破棄は確認を通す。
+model-invoked／manual-onlyとrouterの規律は`skills/writing-for-agents/SKILL-MECHANICS.md`に置く。
 
 `/parallel-review` は退役した。旧配信リンクは `install.sh` が所有元を確認して撤去する。
 `two-axis-review` は旧名の入口だけを残し、手順は `code-review` に一本化する。

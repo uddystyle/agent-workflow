@@ -53,6 +53,10 @@ assert 'disable-model-invocation: true' in tdd
 assert 'disable-model-invocation: true' not in text('skills/writing-for-agents/SKILL.md')
 domain=text('home/.pi/agent/skills/domain-modeling/SKILL.md')
 assert '## 4. 判断' not in domain
+grilling=text('home/.pi/agent/skills/grilling/SKILL.md')
+assert 'fact sub-agent' in grilling
+assert '依存する問いだけ' in grilling
+assert '独立したfrontier' in grilling
 grill=text('home/.pi/agent/skills/grill-with-docs/SKILL.md')
 assert 'ADR' not in grill and '判断' not in grill
 assert 'HERDR_ENV=1' in plannotator
@@ -60,6 +64,11 @@ assert 'plannotator-tui herdr open' in plannotator
 assert 'End your turn' in plannotator
 assert 'file://' in plannotator
 assert 'MIT License' in text('skills/plannotator-tui/LICENSE')
+writing=text('skills/writing-for-agents/SKILL.md')
+mechanics=text('skills/writing-for-agents/SKILL-MECHANICS.md')
+assert 'SKILL-MECHANICS.md' in writing
+assert 'model-invoked' in mechanics and 'manual-only' in mechanics
+assert 'router skill' in mechanics and '共有reference' in mechanics
 assert not (r/'home/.pi/agent/skills/implement/SKILL.md').exists()
 assert not (r/'skills/cua-driver').exists()
 assert not (r/'skills/computer-use-mcp').exists()

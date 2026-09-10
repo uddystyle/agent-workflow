@@ -657,3 +657,13 @@ TypeScript／Effectの変更で失われやすい型根拠、parse provenance、
 public inference、lintの証明範囲は`coding-standards`へ置く。参考先にはrepo全体を再配布できるlicense表示がないため、
 文章はコピーせず、変更diffが示した振る舞いをこのrepoの規律として書き直した。`cua-driver`はdesktop全体への権限と
 具体的用途が釣り合わないため、この更新でも導入しない。
+
+## D-26 調査待ちは依存するfrontierだけを止める
+
+`grilling`で環境の事実が必要ならfact sub-agentへ渡し、その事実に依存する問いだけを未解決にする。
+独立したfrontierは同じラウンドで進め、結果が戻ったら根拠を確認してtreeを再計算する。配車と回収の具体は
+起動する道具へ委ね、skillは依存関係だけを持つ。
+
+skillのmodel-invoked／manual-onlyとrouterの規律は`skills/writing-for-agents/SKILL-MECHANICS.md`へ分ける。
+manual-only同士は自動到達できないため、人へ次のcommandを案内する。複数skillが読む材料は通常Markdownへ置き、
+一方のmanual-only skillへ隠さない。参考先`bdecd10b`の振る舞いを採用したが、license表示が無いため文章は写していない。

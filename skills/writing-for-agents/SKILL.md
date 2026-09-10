@@ -102,6 +102,9 @@ description: エージェントの context に載る文書を書く。スキル�
 
 ## 7. 分けるかを決める
 
+skillのmodel-invoked／manual-only、別skillからの到達性、routerを決めるときは
+[SKILL-MECHANICS.md](SKILL-MECHANICS.md)を読む。
+
 分けると、context 負荷は下がるが**認知負荷が上がる**（§1）。払う理由が要る。
 
 - **順序で分ける**——先の手順が見えていて急ぐとき（§4）

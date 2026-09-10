@@ -57,7 +57,8 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
   `home/.pi/agent/extensions/supabase-prod-confirm.ts:2-5`, `tests/supabase-prod-confirm.sh:14-17`
 - レビューは `skills/code-review/SKILL.md` で規約・仕様を独立したparallel sub-agentsへ渡し、配置は起動する道具へ委ねる。
   smell baselineはskill本文に持つ。TypeScript／Effectの設計規律は`skills/coding-standards/SKILL.md`に置く。
-  調査は`skills/research/SKILL.md`からHerdrのbackground paneへ渡す。
+  調査は`skills/research/SKILL.md`からHerdrのbackground paneへ渡す。grillingのfact調査は依存するfrontierだけを止める。
+  skillの発火・router規律は`skills/writing-for-agents/SKILL-MECHANICS.md`に置く。
 - worktree は `skills/worktrees/SKILL.md` をモデルからも呼べる。作成と Herdr tab 起動は別操作。
 - `dot init/update` は依存導入・ネットワーク・HOME変更を伴う。Pi packageは`packages/pi-packages.txt`から導入し、pi-extmgrの更新確認は既存設定を保つ。検査は`tests/bootstrap.sh`の偽コマンドと一時HOMEを使う。
 
