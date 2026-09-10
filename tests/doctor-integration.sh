@@ -80,7 +80,12 @@ set -e
 # 提供元の数は選択の自由であり、複数認証を必須にしない。
 mkdir -p "$tmp/model-bin"
 printf '%s\n' '#!/usr/bin/env bash' \
- 'if [ "${4:-}" = alpha ] && [ "${READY_PROVIDERS:-}" != none ]; then echo ready;' \
+ 'if [ "${1:-}" = --list-models ]; then' \
+ '  [ "${MODEL_CATALOG:-ready}" = unreadable ] && exit 1' \
+ '  printf "provider model context max-out thinking images\\n"' \
+ '  [ "${MODEL_CATALOG:-ready}" != missing ] && printf "alpha model-a 128K 16K yes no\\n"' \
+ '  exit 0' \
+ 'elif [ "${4:-}" = alpha ] && [ "${READY_PROVIDERS:-}" != none ]; then echo ready;' \
  'elif [ "${4:-}" = beta ] && [ "${READY_PROVIDERS:-}" = both ]; then echo ready;' \
  'else echo not_ready; fi' >"$tmp/model-bin/pi"
 chmod +x "$tmp/model-bin/pi"
@@ -95,6 +100,15 @@ check_providers '{"enabledModels":["alpha/model-a","alpha/model-b"]}' one 'OK   
 check_providers '{"defaultProvider":"alpha"}' one 'OK   認証済みのモデル提供元を 1 系統確認した'
 check_providers '{"defaultProvider":"alpha","enabledModels":["alpha/model-a","beta/model-b"]}' both 'OK   認証済みのモデル提供元を 2 系統確認した'
 check_providers '{"defaultProvider":"alpha"}' none 'WARN 認証済みのモデル提供元を確認できない'
+check_default_model() {
+	local catalog=$1 expected=$2
+	printf '%s\n' '{"defaultProvider":"alpha","defaultModel":"model-a"}' >"$tmp/.pi/agent/settings.json"
+	out=$(env HOME="$tmp" PATH="$tmp/model-bin:$PATH" MODEL_CATALOG="$catalog" "$doctor_repo/tests/doctor.sh" 2>&1)
+	[[ $out == *"$expected"* ]] || fail "default model の判定が違う: $expected"
+}
+check_default_model ready 'OK   Pi のdefault provider/modelはcatalogに存在する'
+check_default_model missing 'WARN Pi のdefault provider/modelがcatalogに無い'
+check_default_model unreadable 'WARN Pi のmodel catalogを読めない'
 printf '%s\n' '{"defaultProvider":"alpha","packages":["npm:pi-extmgr","npm:pi-mcp-adapter"]}' >"$tmp/.pi/agent/settings.json"
 out=$(env HOME="$tmp" PATH="$tmp/model-bin:$PATH" "$doctor_repo/tests/doctor.sh" 2>&1)
 [[ $out == *'管理対象のPi packagesは設定済み'* ]] || fail '管理対象のPi packageを確認しなかった'

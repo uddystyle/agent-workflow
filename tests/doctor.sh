@@ -258,7 +258,64 @@ else
 	skip "pi（入っていない）"
 fi
 
-# 9. 管理対象のPi packagesがsettingsへ入っているか。
+# 9. default provider/modelが、Piの利用可能model一覧に存在するか。
+#    inference requestや認証操作はせず、pi --list-modelsだけを読む。
+pi_settings="$HOME/.pi/agent/settings.json"
+if command -v pi >/dev/null 2>&1 && [ -r "$pi_settings" ]; then
+	defaults=$(PI_SETTINGS_FILE="$pi_settings" python3 - <<'PY' 2>/dev/null
+import json, os, pathlib
+settings = json.loads(pathlib.Path(os.environ["PI_SETTINGS_FILE"]).read_text())
+provider = settings.get("defaultProvider")
+model = settings.get("defaultModel")
+if not provider and not model:
+    print("unset")
+elif not isinstance(provider, str) or not provider or not isinstance(model, str) or not model:
+    print("incomplete")
+else:
+    print("configured")
+    print(provider)
+    print(model)
+PY
+) || defaults=unreadable
+	default_state=${defaults%%$'\n'*}
+	case "$default_state" in
+	configured)
+		default_provider=$(printf '%s\n' "$defaults" | sed -n '2p')
+		default_model=$(printf '%s\n' "$defaults" | sed -n '3p')
+		if model_catalog=$(pi --list-models 2>/dev/null); then
+			if DEFAULT_PROVIDER="$default_provider" DEFAULT_MODEL="$default_model" python3 -c '
+import os, sys
+provider, model = os.environ["DEFAULT_PROVIDER"], os.environ["DEFAULT_MODEL"]
+for line in sys.stdin:
+    fields = line.split()
+    if len(fields) >= 2 and fields[0] == provider and fields[1] == model:
+        sys.exit(0)
+sys.exit(1)
+' <<<"$model_catalog"
+			then
+				ok "Pi のdefault provider/modelはcatalogに存在する"
+			else
+				warn "Pi のdefault provider/modelがcatalogに無い。Pi のモデル設定を確認する"
+			fi
+		else
+			warn "Pi のmodel catalogを読めない。pi --list-modelsを直接実行して確認する"
+		fi
+		;;
+	incomplete)
+		warn "Pi のdefault provider/model設定が片方だけになっている"
+		;;
+	unset)
+		skip "Pi default provider/model（未設定）"
+		;;
+	*)
+		warn "Pi のdefault provider/model設定を読めない"
+		;;
+	esac
+else
+	skip "Pi default provider/model（piまたはsettingsが無い）"
+fi
+
+# 10. 管理対象のPi packagesがsettingsへ入っているか。
 pi_packages="$repo/packages/pi-packages.txt"
 pi_settings="$HOME/.pi/agent/settings.json"
 if command -v pi >/dev/null 2>&1 && [ -r "$pi_settings" ] && [ -r "$pi_packages" ]; then
@@ -288,7 +345,7 @@ else
 	skip "Pi package設定（pi、settings、またはmanifestが無い）"
 fi
 
-# 10. ローカルの main が origin より先行していないか
+# 11. ローカルの main が origin より先行していないか
 #    🔴 worktree は origin から分岐する。溜めると古い土台で作業が始まる。
 if git -C "$repo" rev-parse --verify origin/main >/dev/null 2>&1; then
 	ahead=$(git -C "$repo" rev-list --count origin/main..main 2>/dev/null || echo 0)
@@ -301,7 +358,7 @@ else
 	skip "origin/main（まだ無い）"
 fi
 
-# 11. document review skill が呼ぶ standalone command があるか
+# 12. document review skill が呼ぶ standalone command があるか
 #     Herdr plugin 内の binary は PATH に出ないため、skill だけ届いてもreviewを開始できない。
 plannotator_bin="${PLANNOTATOR_TUI_BIN:-}"
 if [ -n "$plannotator_bin" ]; then

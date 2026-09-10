@@ -53,7 +53,7 @@ Pi は npm のグローバル導入を前提にする。他の導入経路で同
 | `./dot init` | 依存導入と初期構築（ネットワーク・HOME への変更あり） |
 | `./dot update` | clean な repo を fast-forward、管理依存と Pi packages を更新し、再配信 |
 | `./dot stow` | 導入済みの設定とskillを再配信。依存導入・更新なし |
-| `./dot doctor` | 配信・観点定義・連携を診断 |
+| `./dot doctor` | 配信・観点定義・連携・Pi default modelのcatalog整合性を診断 |
 
 `install.sh` は低水準の配信処理として残す。`dot` は既定の `~/.pi/agent` 配置を対象とする。
 稼働中の Herdr session を再起動せず、Pi の `/reload` や Herdr 設定の再読込みは人が行う。

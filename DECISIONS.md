@@ -668,3 +668,11 @@ public inference、lintの証明範囲は`coding-standards`へ置く。public ex
 skillのmodel-invoked／manual-onlyとrouterの規律は`skills/writing-for-agents/SKILL-MECHANICS.md`へ分ける。
 manual-only同士は自動到達できないため、人へ次のcommandを案内する。複数skillが読む材料は通常Markdownへ置き、
 一方のmanual-only skillへ隠さない。参考先`bdecd10b`の振る舞いを採用したが、license表示が無いため文章は写していない。
+
+## D-27 通常providerへPrivate Gatewayを重ねない
+
+認証済みの通常providerへ直接接続できるため、参考先のPrivate Gatewayは導入しない。独自認証、model discovery、routing、
+stream adapterを重ねても品質は上がらず、latency、catalog不整合、credential転送、Pi本体への追随という障害点が増える。
+
+代わりに`doctor`は設定されたdefault provider/modelが`pi --list-models`に存在することだけを確認する。これはcatalogと認証設定の
+整合性であり、実際のinference成功は証明しない。API費用と外部送信を伴うsmoke requestは自動診断へ入れない。
