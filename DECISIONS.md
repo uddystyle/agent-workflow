@@ -676,3 +676,13 @@ stream adapterを重ねても品質は上がらず、latency、catalog不整合�
 
 代わりに`doctor`は設定されたdefault provider/modelが`pi --list-models`に存在することだけを確認する。これはcatalogと認証設定の
 整合性であり、実際のinference成功は証明しない。API費用と外部送信を伴うsmoke requestは自動診断へ入れない。
+
+## D-28 terminalとagentの配色は同じEverforest sourceへ揃える
+
+GhosttyとPiはMITの`jrswab/everforest-themes` commit `871c01e`をsourceにする。Ghosttyは同repoの
+`ghostty/everforest-dark`をそのまま配置し、Piは`pi/everforest.json`を`home/.pi/agent/themes/`から配る。
+HerdrはGhosttyのANSI paletteを使う`terminal` themeを土台にし、固有tokenを同じpaletteで上書きする。
+旧CatppuccinとGhostty組み込みEverforestの設定値は、戻せるよう設定内にコメントとして残す。
+
+**理由**: Ghosttyだけを変えてもPiとHerdrはそれぞれのthemeを描画するため、差し色がCatppuccinのまま残る。
+3つを同じ公開sourceへ揃え、source commitとMIT licenseをthemeの隣に置けば、色の由来と更新差分を確認できる。

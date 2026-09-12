@@ -109,23 +109,37 @@ fi
 # 設定の存在だけでなく、日常運用で使う値まで見る。
 herdr_config="${HERDR_DOCTOR_CONFIG:-$HOME/.config/herdr/config.toml}"
 if HERDR_CONFIG="$herdr_config" python3 - <<'PY'
-import os, sys
+import os, re, sys
 
 def required_values(path):
     section = ""
     values = {}
     with open(path, encoding="utf-8") as file:
         for raw in file:
-            line = raw.split("#", 1)[0].strip()
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
             if line.startswith("[") and line.endswith("]"):
                 section = line[1:-1]
-            elif "=" in line and section in {"ui", "ui.toast"}:
-                key, value = (part.strip() for part in line.split("=", 1))
-                values[(section, key)] = value.strip('"')
+                continue
+            match = re.match(r'([A-Za-z0-9_]+)\s*=\s*"([^"]*)"', line)
+            if match and section in {"theme", "theme.custom", "ui", "ui.toast"}:
+                values[(section, match.group(1))] = match.group(2)
     return values
 
 try:
     values = required_values(os.environ["HERDR_CONFIG"])
+    assert values[("theme", "name")] == "terminal"
+    assert values[("theme.custom", "sidebar_bg")] == "#232a2e"
+    assert values[("theme.custom", "active_row_bg")] == "#343f44"
+    assert values[("theme.custom", "selection_bg")] == "#3a515d"
+    assert values[("theme.custom", "panel_bg")] == "#2d353b"
+    assert values[("theme.custom", "text")] == "#d3c6aa"
+    assert values[("theme.custom", "accent")] == "#a7c080"
+    assert values[("theme.custom", "green")] == "#a7c080"
+    assert values[("theme.custom", "yellow")] == "#dbbc7f"
+    assert values[("theme.custom", "red")] == "#e67e80"
+    assert values[("theme.custom", "blue")] == "#7fbbb3"
     assert values[("ui", "agent_panel_sort")] == "priority"
     assert values[("ui", "status_indicators")] == "symbols"
     assert values[("ui.toast", "delivery")] == "herdr"
@@ -133,9 +147,9 @@ except Exception:
     sys.exit(1)
 PY
 then
-	ok "herdr は注意順・状態記号・画面内 toast で agent を観測する"
+	ok "herdr はEverforest配色と注意順・状態記号・画面内 toastでagentを観測する"
 else
-	bad "herdr の agent 観測設定が足りない。agent_panel_sort=priority、status_indicators=symbols、ui.toast.delivery=herdr を設定する"
+	bad "herdr のthemeまたはagent観測設定が足りない。Everforest配色、agent_panel_sort=priority、status_indicators=symbols、ui.toast.delivery=herdrを設定する"
 fi
 
 # 4. repoが配るPi agent定義は、読む道具だけに限る。
@@ -345,7 +359,35 @@ else
 	skip "Pi package設定（pi、settings、またはmanifestが無い）"
 fi
 
-# 11. ローカルの main が origin より先行していないか
+# 11. Piがrepo管理のEverforest themeを選んでいるか。
+pi_theme="$HOME/.pi/agent/themes/everforest.json"
+if [ -r "$pi_settings" ] && [ -r "$pi_theme" ]; then
+	if PI_SETTINGS_FILE="$pi_settings" PI_THEME_FILE="$pi_theme" python3 - <<'PY'
+import json, os, pathlib, sys
+try:
+    settings = json.loads(pathlib.Path(os.environ["PI_SETTINGS_FILE"]).read_text())
+    theme = json.loads(pathlib.Path(os.environ["PI_THEME_FILE"]).read_text())
+    valid = (
+        settings.get("theme") == "everforest"
+        and theme.get("name") == "everforest"
+        and theme.get("colors", {}).get("accent") == "green"
+        and theme.get("vars", {}).get("bg0", "").lower() == "#2d353b"
+        and theme.get("vars", {}).get("green", "").lower() == "#a7c080"
+    )
+except (OSError, ValueError):
+    valid = False
+sys.exit(0 if valid else 1)
+PY
+	then
+		ok "Piはrepo管理のEverforest themeを使う"
+	else
+		warn "PiのEverforest themeまたはsettingsが一致しない。themeをeverforestにする"
+	fi
+else
+	skip "Pi Everforest theme（themeまたはsettingsが無い）"
+fi
+
+# 12. ローカルの main が origin より先行していないか
 #    🔴 worktree は origin から分岐する。溜めると古い土台で作業が始まる。
 if git -C "$repo" rev-parse --verify origin/main >/dev/null 2>&1; then
 	ahead=$(git -C "$repo" rev-list --count origin/main..main 2>/dev/null || echo 0)
@@ -358,7 +400,7 @@ else
 	skip "origin/main（まだ無い）"
 fi
 
-# 12. document review skill が呼ぶ standalone command があるか
+# 13. document review skill が呼ぶ standalone command があるか
 #     Herdr plugin 内の binary は PATH に出ないため、skill だけ届いてもreviewを開始できない。
 plannotator_bin="${PLANNOTATOR_TUI_BIN:-}"
 if [ -n "$plannotator_bin" ]; then

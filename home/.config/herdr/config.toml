@@ -46,15 +46,38 @@ command = "annotate.manage"
 description = "注釈の一覧"
 
 [theme]
-name = "catppuccin"
+# name = "catppuccin"
+# GhosttyのEverforest Dark Hard ANSI paletteを継承する。
+name = "terminal"
 
 [theme.custom]
-accent = "#c6a0f6"
-panel_bg = "#24273a"
-green = "#a6da95"
-yellow = "#eed49f"
-red = "#ed8796"
-blue = "#8aadf4"
+# Catppuccin Macchiato
+# accent = "#c6a0f6"
+# panel_bg = "#24273a"
+# green = "#a6da95"
+# yellow = "#eed49f"
+# red = "#ed8796"
+# blue = "#8aadf4"
+
+# Ghostty built-in Everforest Dark Hard
+# accent = "#a7c080"
+# panel_bg = "#1e2326"
+# green = "#a7c080"
+# yellow = "#dbbc7f"
+# red = "#e67e80"
+# blue = "#7fbbb3"
+
+# jrswab/everforest-themes: ghostty/everforest-dark + pi/everforest.json
+sidebar_bg = "#232a2e"
+active_row_bg = "#343f44"
+selection_bg = "#3a515d"
+panel_bg = "#2d353b"
+text = "#d3c6aa"
+accent = "#a7c080"
+green = "#a7c080"
+yellow = "#dbbc7f"
+red = "#e67e80"
+blue = "#7fbbb3"
 
 
 [ui]

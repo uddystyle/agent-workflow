@@ -35,7 +35,7 @@ out=$(run_doctor)
 status=$?
 set -e
 [ "$status" -eq 0 ] || fail "隔離した配置を doctor が失敗とした: $out"
-[[ $out == *'herdr は注意順・状態記号・画面内 toast で agent を観測する'* ]] || fail 'Herdr の agent 観測設定を確認しなかった'
+[[ $out == *'herdr はEverforest配色と注意順・状態記号・画面内 toastでagentを観測する'* ]] || fail 'Herdr のthemeとagent観測設定を確認しなかった'
 [[ $out == *'Pi agent定義は読む道具だけを持つ'* ]] || fail '読み取り専用のagent定義を確認しなかった'
 [[ $out == *'Chrome DevTools MCPは隔離設定済み'* ]] || fail 'Chrome DevTools MCPの隔離設定を確認しなかった'
 [[ $out == *'plannotator-tui は agent から呼べる'* ]] || fail 'plannotator-tui の実行経路を確認しなかった'
@@ -65,7 +65,7 @@ out=$(env HOME="$tmp" HERDR_DOCTOR_CONFIG="$tmp/bad-herdr.toml" "$doctor_repo/te
 status=$?
 set -e
 [ "$status" -ne 0 ] || fail '不十分な Herdr agent 観測設定で doctor が成功した'
-[[ $out == *'herdr の agent 観測設定が足りない'* ]] || fail '不十分な Herdr agent 観測設定を報告しなかった'
+[[ $out == *'herdr のthemeまたはagent観測設定が足りない'* ]] || fail '不十分なHerdr themeまたはagent観測設定を報告しなかった'
 
 # herdr の状態取得に失敗しても、最新版だと誤って報告しない。
 printf '#!/usr/bin/env bash\nexit 1\n' >"$tmp/unreadable-herdr"
@@ -109,9 +109,10 @@ check_default_model() {
 check_default_model ready 'OK   Pi のdefault provider/modelはcatalogに存在する'
 check_default_model missing 'WARN Pi のdefault provider/modelがcatalogに無い'
 check_default_model unreadable 'WARN Pi のmodel catalogを読めない'
-printf '%s\n' '{"defaultProvider":"alpha","packages":["npm:pi-extmgr","npm:pi-mcp-adapter"]}' >"$tmp/.pi/agent/settings.json"
+printf '%s\n' '{"defaultProvider":"alpha","theme":"everforest","packages":["npm:pi-extmgr","npm:pi-mcp-adapter"]}' >"$tmp/.pi/agent/settings.json"
 out=$(env HOME="$tmp" PATH="$tmp/model-bin:$PATH" "$doctor_repo/tests/doctor.sh" 2>&1)
 [[ $out == *'管理対象のPi packagesは設定済み'* ]] || fail '管理対象のPi packageを確認しなかった'
+[[ $out == *'Piはrepo管理のEverforest themeを使う'* ]] || fail 'PiのEverforest themeを確認しなかった'
 rm "$tmp/.pi/agent/settings.json"
 
 # canonical root は bare repository を .git から参照する。doctor は bare root や
@@ -124,6 +125,7 @@ git -C "$canonical" worktree add "$canonical/main" HEAD >/dev/null 2>&1
 git -C "$canonical" worktree add "$canonical/a-topic" HEAD >/dev/null 2>&1
 # main より辞書順で先に現れる topic worktree 上で、作業中の doctor を実行する。
 cp "$repo/tests/doctor.sh" "$canonical/a-topic/tests/doctor.sh"
+cp "$repo/home/.config/herdr/config.toml" "$canonical/main/home/.config/herdr/config.toml"
 cp "$repo/home/.pi/agent/mcp.json" "$canonical/main/home/.pi/agent/mcp.json"
 mkdir -p "$canonical_home/.pi/agent/skills"
 env HOME="$canonical_home" "$canonical/main/install.sh" >/dev/null
@@ -146,6 +148,7 @@ git -C "$fallback_canonical" worktree add "$fallback_canonical/a-fallback" HEAD 
 git -C "$fallback_canonical" worktree add "$fallback_canonical/z-topic" HEAD >/dev/null 2>&1
 [ ! -e "$fallback_canonical/main" ] || fail 'fallback 用 canonical root に main がある'
 cp "$repo/tests/doctor.sh" "$fallback_canonical/z-topic/tests/doctor.sh"
+cp "$repo/home/.config/herdr/config.toml" "$fallback_canonical/a-fallback/home/.config/herdr/config.toml"
 cp "$repo/home/.pi/agent/mcp.json" "$fallback_canonical/a-fallback/home/.pi/agent/mcp.json"
 mkdir -p "$fallback_home/.pi/agent/skills"
 env HOME="$fallback_home" "$fallback_canonical/a-fallback/install.sh" >/dev/null

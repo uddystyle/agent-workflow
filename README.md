@@ -11,6 +11,7 @@ Herdr の pane で Pi を立ち上げ、Codex と必要な拡張を選んで使�
 | `skills/`                  | 動詞ごとのスキル。`~/.agents/skills/` を経由して Pi へ配る |
 | `home/`                    | マシンの設定。`~` と同じ形の木。stow で張る                |
 | `home/.pi/agent/extensions/` | Pi の拡張。秘密スキャンを含む |
+| `home/.pi/agent/themes/` | Piのthemeと外部source・license記録 |
 | `home/.pi/agent/mcp.json` | PiのMCP serverと安全側の実行設定 |
 | `packages/pi-packages.txt` | 全環境へ導入するPi package |
 
