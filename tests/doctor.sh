@@ -122,9 +122,9 @@ def required_values(path):
             if line.startswith("[") and line.endswith("]"):
                 section = line[1:-1]
                 continue
-            match = re.match(r'([A-Za-z0-9_]+)\s*=\s*"([^"]*)"', line)
+            match = re.match(r'([A-Za-z0-9_]+)\s*=\s*(?:"([^"]*)"|(true|false))', line)
             if match and section in {"theme", "theme.custom", "ui", "ui.toast"}:
-                values[(section, match.group(1))] = match.group(2)
+                values[(section, match.group(1))] = match.group(2) or match.group(3)
     return values
 
 try:
@@ -149,7 +149,9 @@ try:
     assert values[("theme.custom", "blue")] == "#7fbbb3"
     assert values[("theme.custom", "teal")] == "#83c092"
     assert values[("theme.custom", "peach")] == "#e69875"
-    assert values[("ui", "pane_borders")] == "off"
+    assert values[("ui", "pane_borders")] == "auto"
+    assert values[("ui", "pane_outer_borders")] == "true"
+    assert values[("ui", "pane_gaps")] == "true"
     assert values[("ui", "agent_panel_sort")] == "priority"
     assert values[("ui", "status_indicators")] == "symbols"
     assert values[("ui.toast", "delivery")] == "herdr"

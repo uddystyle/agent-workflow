@@ -683,9 +683,10 @@ GhosttyとPiはMITの`jrswab/everforest-themes` commit `871c01e`をsourceにす�
 `ghostty/everforest-dark`をそのまま配置し、Piは`pi/everforest.json`を`home/.pi/agent/themes/`から配る。
 Herdrは`terminal` themeを土台にし、公式`sainnhe/everforest`のDark Hard paletteで固有tokenを上書きする。
 旧Catppuccin、Ghostty組み込みEverforest、jrswab版の設定値は、戻せるよう設定内にコメントとして残す。
-Active tabはgreenの`theme.custom.accent`を使う。Herdr 0.9.0はactive tab背景とfocused pane枠を同じtokenで描くため、
-pane枠だけを暗くするとtab名のcontrastまで失われる。Paneは`ui.pane_borders = "off"`として枠を描かず、
-`pane_gaps = true`の背景差で分離する。Inactive tabは`surface0 = bg_dim`の上へ`overlay0 = grey0`、名前付きなら
+Active tabとfocused pane枠はgreenの`theme.custom.accent`、unfocused pane枠は`overlay0`を使う。
+Herdr 0.9.0はCatppuccinと同じ役割分担で、active tabとfocused pane枠の`accent`を共有する。
+Pane枠は`ui.pane_borders = "auto"`でsplit時に描き、`pane_gaps = true`で隣接paneを分離する。
+`pane_outer_borders = true`として外周も描く。Inactive tabは`surface0 = bg_dim`の上へ`overlay0 = grey0`、名前付きなら
 `overlay1 = grey1`で描き、activeではなくても判読できるようにする。Sidebarとtab rowを含むpanelは最暗色`bg_dim`へ揃える。
 Spaces／agentsの横線とsidebar右端は`surface_dim`へ一段上の`bg0`を置き、消え切らない最小限のcontrastを付ける。
 残るsurface、補助text、branch、notification、warning tokenもDark Hardの`bg2`、`grey`、`purple`、`aqua`、`orange`へ
