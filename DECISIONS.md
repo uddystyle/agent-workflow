@@ -696,3 +696,10 @@ Spaces／agentsの横線とsidebar右端は`surface_dim`へ一段上の`bg0`を�
 **理由**: Ghosttyだけを変えてもPiとHerdrはそれぞれのthemeを描画するため、差し色がCatppuccinのまま残る。
 GhosttyとPiは配布元のsource commitとMIT licenseをthemeの隣に置き、Herdrは要求されたDark Hardの背景階調を
 公式paletteから明示することで、それぞれの色の由来と更新差分を確認できる。
+
+## D-29 VimとHerdrのpane移動を同じkeyにする
+
+Herdr plugin `paulbkim-dev/vim-herdr-navigation`とNeovim側のnormal-mode mappingで`Ctrl+h/j/k/l`を共有する。
+Neovim内ではwindowを移動し、端では`HERDR_PANE_ID`を明示して隣のHerdr paneへ移る。Vim以外のpaneではHerdr paneを
+直接移動する。このglobal bindingがPiの`Ctrl+j`改行、`Ctrl+k`行末削除、`Ctrl+l` model selectorより優先されるtradeoffは、
+pane間移動を同じkeyに揃えるため受け入れる。外部pluginは`dot init/update`から導入・更新する。

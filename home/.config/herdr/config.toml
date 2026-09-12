@@ -15,6 +15,32 @@ prefix = "ctrl+,"
 reload_config = "prefix+r"
 
 
+# Vim/Neovim内ではwindowを移動し、端では隣のHerdr paneへ抜ける。
+# Vim以外ではHerdr paneを直接移動するため、Piの同じCtrl keyよりこちらが優先される。
+[[keys.command]]
+key = "ctrl+h"
+type = "plugin_action"
+command = "vim-herdr-navigation.left"
+description = "左のVim windowまたはHerdr paneへ移動する"
+
+[[keys.command]]
+key = "ctrl+j"
+type = "plugin_action"
+command = "vim-herdr-navigation.down"
+description = "下のVim windowまたはHerdr paneへ移動する"
+
+[[keys.command]]
+key = "ctrl+k"
+type = "plugin_action"
+command = "vim-herdr-navigation.up"
+description = "上のVim windowまたはHerdr paneへ移動する"
+
+[[keys.command]]
+key = "ctrl+l"
+type = "plugin_action"
+command = "vim-herdr-navigation.right"
+description = "右のVim windowまたはHerdr paneへ移動する"
+
 [[keys.command]]
 key = "prefix+a"
 type = "plugin_action"

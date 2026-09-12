@@ -1,2 +1,3 @@
 # dot init / update が同期する GitHub plugin source。
 plannotator/herdr-annotate
+paulbkim-dev/vim-herdr-navigation
