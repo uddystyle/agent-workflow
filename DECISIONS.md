@@ -677,12 +677,20 @@ stream adapterを重ねても品質は上がらず、latency、catalog不整合�
 代わりに`doctor`は設定されたdefault provider/modelが`pi --list-models`に存在することだけを確認する。これはcatalogと認証設定の
 整合性であり、実際のinference成功は証明しない。API費用と外部送信を伴うsmoke requestは自動診断へ入れない。
 
-## D-28 terminalとagentの配色は同じEverforest sourceへ揃える
+## D-28 terminalとagentの配色はEverforestへ揃える
 
 GhosttyとPiはMITの`jrswab/everforest-themes` commit `871c01e`をsourceにする。Ghosttyは同repoの
 `ghostty/everforest-dark`をそのまま配置し、Piは`pi/everforest.json`を`home/.pi/agent/themes/`から配る。
-HerdrはGhosttyのANSI paletteを使う`terminal` themeを土台にし、固有tokenを同じpaletteで上書きする。
-旧CatppuccinとGhostty組み込みEverforestの設定値は、戻せるよう設定内にコメントとして残す。
+Herdrは`terminal` themeを土台にし、公式`sainnhe/everforest`のDark Hard paletteで固有tokenを上書きする。
+旧Catppuccin、Ghostty組み込みEverforest、jrswab版の設定値は、戻せるよう設定内にコメントとして残す。
+Active tabはgreenの`theme.custom.accent`を使う。Herdr 0.9.0はactive tab背景とfocused pane枠を同じtokenで描くため、
+pane枠だけを暗くするとtab名のcontrastまで失われる。Paneは`ui.pane_borders = "off"`として枠を描かず、
+`pane_gaps = true`の背景差で分離する。Inactive tabは`surface0 = bg_dim`の上へ`overlay0 = grey0`、名前付きなら
+`overlay1 = grey1`で描き、activeではなくても判読できるようにする。Sidebarとtab rowを含むpanelは最暗色`bg_dim`へ揃える。
+Spaces／agentsの横線とsidebar右端は`surface_dim`へ一段上の`bg0`を置き、消え切らない最小限のcontrastを付ける。
+残るsurface、補助text、branch、notification、warning tokenもDark Hardの`bg2`、`grey`、`purple`、`aqua`、`orange`へ
+明示し、土台の`terminal` themeからANSI色が混ざらないようにする。
 
 **理由**: Ghosttyだけを変えてもPiとHerdrはそれぞれのthemeを描画するため、差し色がCatppuccinのまま残る。
-3つを同じ公開sourceへ揃え、source commitとMIT licenseをthemeの隣に置けば、色の由来と更新差分を確認できる。
+GhosttyとPiは配布元のsource commitとMIT licenseをthemeの隣に置き、Herdrは要求されたDark Hardの背景階調を
+公式paletteから明示することで、それぞれの色の由来と更新差分を確認できる。

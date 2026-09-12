@@ -47,7 +47,7 @@ description = "注釈の一覧"
 
 [theme]
 # name = "catppuccin"
-# GhosttyのEverforest Dark Hard ANSI paletteを継承する。
+# terminal themeを土台にし、下でEverforest Dark Hardを明示する。
 name = "terminal"
 
 [theme.custom]
@@ -68,21 +68,49 @@ name = "terminal"
 # blue = "#7fbbb3"
 
 # jrswab/everforest-themes: ghostty/everforest-dark + pi/everforest.json
-sidebar_bg = "#232a2e"
-active_row_bg = "#343f44"
-selection_bg = "#3a515d"
-panel_bg = "#2d353b"
+# sidebar_bg = "#232a2e"
+# active_row_bg = "#343f44"
+# selection_bg = "#3a515d"
+# panel_bg = "#2d353b"
+# text = "#d3c6aa"
+# accent = "#a7c080"
+# green = "#a7c080"
+# yellow = "#dbbc7f"
+# red = "#e67e80"
+# blue = "#7fbbb3"
+
+# sainnhe/everforest: dark hard
+sidebar_bg = "#1e2326"    # bg_dim（最暗色）
+active_row_bg = "#2e383c"
+selection_bg = "#4c3743"
+# panel_bg = "#272e33" # bg0
+panel_bg = "#1e2326" # bg_dim（sidebarとtab rowを統一）
 text = "#d3c6aa"
-accent = "#a7c080"
+# accent = "#495156" # bg4（active tab名のcontrastが足りない）
+# accent = "#272e33" # bg0（active tab名がpanel_bgと同色になる）
+accent = "#a7c080"      # green（active tab。pane枠はui.pane_bordersで消す）
+surface0 = "#1e2326"    # bg_dim（inactive tab背景）
+surface1 = "#374145"    # bg2（hover／active surface）
+surface_dim = "#272e33" # bg0（sidebar背景より一段だけ明るい区切り線）
+overlay0 = "#7a8478"    # grey0（inactive tab名・secondary text）
+overlay1 = "#859289"    # grey1（名前を付けたinactive tab）
+subtext0 = "#9da9a0"    # grey2（補助label）
+mauve = "#d699b6"       # purple（branch／special label）
 green = "#a7c080"
 yellow = "#dbbc7f"
 red = "#e67e80"
 blue = "#7fbbb3"
+teal = "#83c092"        # aqua（notification／unseen marker）
+peach = "#e69875"       # orange（interrupted／warning）
 
 
 [ui]
+# accent = "#495156" # theme.custom.accentがある場合は無視される旧互換設定
 sidebar_width = 32
 prompt_new_workspace_name = true
+pane_borders = "off"
+pane_outer_borders = false
+pane_gaps = true
 pane_scrollbars = false
 show_agent_labels_on_pane_borders = false
 confirm_close = true
