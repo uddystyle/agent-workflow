@@ -383,8 +383,12 @@ try:
         settings.get("theme") == "everforest"
         and theme.get("name") == "everforest"
         and theme.get("colors", {}).get("accent") == "green"
+        and theme.get("colors", {}).get("toolPendingBg") == "toolPendingBg"
+        and theme.get("colors", {}).get("toolOutput") == "grey2"
         and theme.get("vars", {}).get("bg0", "").lower() == "#2d353b"
         and theme.get("vars", {}).get("green", "").lower() == "#a7c080"
+        and theme.get("vars", {}).get("toolSuccessBg", "").lower() == "#232a2e"
+        and theme.get("vars", {}).get("toolErrorBg", "").lower() == "#3a2e31"
     )
 except (OSError, ValueError):
     valid = False

@@ -680,8 +680,9 @@ stream adapterを重ねても品質は上がらず、latency、catalog不整合�
 ## D-28 terminalとagentの配色はEverforestへ揃える
 
 GhosttyとPiはMITの`jrswab/everforest-themes` commit `871c01e`をsourceにする。Ghosttyは同repoの
-`ghostty/everforest-dark`をそのまま配置し、Piは`pi/everforest.json`を`home/.pi/agent/themes/`から配る。
-Herdrは`terminal` themeを土台にし、公式`sainnhe/everforest`のDark Hard paletteで固有tokenを上書きする。
+`ghostty/everforest-dark`をそのまま配置する。Piは`pi/everforest.json`を土台にし、tool callの状態背景を暗いsurfaceへ、
+outputを`grey2`へ調整して、大きな成功色の面と低contrastを避ける。Herdrは`terminal` themeを土台にし、
+公式`sainnhe/everforest`のDark Hard paletteで固有tokenを上書きする。
 旧Catppuccin、Ghostty組み込みEverforest、jrswab版の設定値は、戻せるよう設定内にコメントとして残す。
 Active tabとfocused pane枠はgreenの`theme.custom.accent`、unfocused pane枠は`overlay0`を使う。
 Herdr 0.9.0はCatppuccinと同じ役割分担で、active tabとfocused pane枠の`accent`を共有する。

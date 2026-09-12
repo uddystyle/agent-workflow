@@ -21,8 +21,8 @@
     "selectedBg": "#3a515d",
     "userMsgBg": "#343f44",
     "toolPendingBg": "#2d353b",
-    "toolSuccessBg": "#425047",
-    "toolErrorBg": "#514045",
+    "toolSuccessBg": "#232a2e",
+    "toolErrorBg": "#3a2e31",
     "customMsgBg": "#3a3b4d"
   },
   "colors": {
@@ -44,11 +44,11 @@
     "customMessageBg": "customMsgBg",
     "customMessageText": "fg",
     "customMessageLabel": "orange",
-    "toolPendingBg": "bg1",
+    "toolPendingBg": "toolPendingBg",
     "toolSuccessBg": "toolSuccessBg",
     "toolErrorBg": "toolErrorBg",
     "toolTitle": "fg",
-    "toolOutput": "grey0",
+    "toolOutput": "grey2",
 
     "mdHeading": "yellow",
     "mdLink": "blue",
