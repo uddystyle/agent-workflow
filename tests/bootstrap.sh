@@ -10,6 +10,8 @@ cp "$repo/packages/Brewfile" "$tmp/repo/packages/Brewfile"
 cp "$repo/packages/pi-packages.txt" "$tmp/repo/packages/pi-packages.txt"
 cp "$repo/home/.config/herdr/plugins.txt" "$tmp/repo/home/.config/herdr/plugins.txt"
 cp "$repo/home/.config/herdr/config.toml" "$tmp/repo/home/.config/herdr/config.toml"
+mkdir -p "$tmp/repo/home/.pi/agent"
+cp "$repo/home/.pi/agent/keybindings.json" "$tmp/repo/home/.pi/agent/keybindings.json"
 printf 'export default function() {}\n' >"$tmp/npm/@earendil-works/pi-coding-agent/examples/extensions/subagent/index.ts"
 printf 'export {};\n' >"$tmp/npm/@earendil-works/pi-coding-agent/examples/extensions/subagent/agents.ts"
 for name in install.sh tests/doctor.sh; do
@@ -43,10 +45,18 @@ grep -q '^pi install npm:pi-mcp-adapter$' "$CALL_LOG" || fail 'managed pi-mcp-ad
 grep -q 'herdr integration install pi' "$CALL_LOG" || fail 'Pi integration missing'
 grep -q 'herdr plugin install plannotator/herdr-annotate --yes' "$CALL_LOG" || fail 'annotate plugin manifest not applied'
 grep -q 'herdr plugin install paulbkim-dev/vim-herdr-navigation --yes' "$CALL_LOG" || fail 'Vim navigation plugin manifest not applied'
-for key in h k l; do
+for key in h l; do
  grep -q "key = \"ctrl+$key\"" "$tmp/repo/home/.config/herdr/config.toml" || fail "Vim/Herdr Ctrl+$key binding missing"
 done
-! grep -q 'key = "ctrl+j"' "$tmp/repo/home/.config/herdr/config.toml" || fail 'Ctrl+j must remain available for Pi newlines'
+for key in j k; do
+ ! grep -q "key = \"ctrl+$key\"" "$tmp/repo/home/.config/herdr/config.toml" || fail "Ctrl+$key must remain available to Pi"
+done
+python3 - "$tmp/repo/home/.pi/agent/keybindings.json" <<'PY' || fail 'Pi selector Ctrl+j/k bindings missing'
+import json, sys
+bindings = json.load(open(sys.argv[1]))
+assert bindings["tui.select.up"] == ["up", "ctrl+k"]
+assert bindings["tui.select.down"] == ["down", "ctrl+j"]
+PY
 ! grep -q 'integration install claude' "$CALL_LOG" || fail 'Claude CLI was configured'
 ! grep -q 'pi update' "$CALL_LOG" || fail 'init upgraded Pi'
 run init >/dev/null

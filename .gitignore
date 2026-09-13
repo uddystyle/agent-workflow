@@ -20,6 +20,7 @@ home/.pi/agent/*
 !home/.pi/agent/package.json
 !home/.pi/agent/tsconfig.json
 !home/.pi/agent/cloak.json
+!home/.pi/agent/keybindings.json
 !home/.pi/agent/mcp.json
 !home/.pi/agent/themes/
 !home/.pi/agent/themes/**

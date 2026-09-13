@@ -697,5 +697,5 @@ GhosttyとPiは配布元のsource commitとMIT licenseをthemeの隣に置き、
 
 Herdr plugin `paulbkim-dev/vim-herdr-navigation`とNeovim側のnormal-mode mappingで`Ctrl+h/j/k/l`を共有する。
 Neovim内ではwindowを移動し、端では`HERDR_PANE_ID`を明示して隣のHerdr paneへ移る。Herdrのglobal bindingは
-`Ctrl+h/k/l`に置き、Piの`Ctrl+k`行末削除と`Ctrl+l` model selectorよりpane移動を優先する。`Ctrl+j`はPiの改行へ渡し、
-Vim以外から下のpaneへ移るときは`prefix+j`を使う。外部pluginは`dot init/update`から導入・更新する。
+`Ctrl+h/l`に置き、`Ctrl+j/k`はPiへ渡す。Piの標準selectorでは`Ctrl+j/k`を下／上へ割り当て、通常の入力欄では
+改行／行末削除を保つ。Vim以外から上下のpaneへ移るときは`prefix+j/k`を使う。外部pluginは`dot init/update`から導入・更新する。
