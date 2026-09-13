@@ -617,14 +617,13 @@ stow -D -d <古い root>/main -t ~ home     # 🔴 動かす前に。-d が古�
 
 **見直す条件**: provider に依存せず、モデルが skill を読み終えたことと公開された結果を観測できる seam ができたとき。
 
-## D-23 footerには実在するPi packageだけを出す
+## D-23 package管理情報をfooterへ出さない
 
-Piのextension status行へpackage数と更新確認間隔を出すため、`pi-extmgr`を管理対象にする。導入元は
-`packages/pi-packages.txt`に置き、`dot init`は不足時だけ導入する。更新確認は1日間隔で初期化するが、
-人が後から変えたcache設定は上書きしない。
+`pi-extmgr`は管理対象から外し、package数と更新間隔のstatus行を表示しない。packageの導入・削除・更新にはPi本体の
+`pi install`、`pi remove`、`pi update`を使う。
 
-**理由**: 参考先の`pkg`と時間はHerdr設定ではなく、`pi-extmgr`の`setStatus`が出すpackage数とscheduled checkである。
-0.3.0のsource、MIT license、typecheck、156 testsを`/private/tmp`で確認してから本環境へ入れた。
+**理由**: 常時表示されるpackage数と更新間隔より、promptとmodel情報へ画面を使う。Pi本体にpackage管理機能があり、
+footer表示のためだけに別managerを常駐させない。
 
 MCP clientにはMITの`pi-mcp-adapter`を使う。`packages/pi-packages.txt`から本体だけを導入し、用途が決まるまで
 serverは設定しない。serverが0件ならadapterはfooter statusを出さず、外部接続もしない。実在しないserverや
@@ -634,18 +633,15 @@ serverは設定しない。serverが0件ならadapterはfooter statusを出さ�
 example生成物2件はbuild後に通り、protocol検査1件は単独再実行で通ったが、request header commandの子process
 cleanup 2件は再現した。この機能は設定せず、upstreamで解消するまで使わない。
 
-## D-24 browser MCPは普段のprofileから隔離する
+## D-24 browser診断はBashから始める
 
-Web applicationのconsole、network、performance、操作再現にはApache-2.0の`chrome-devtools-mcp` 1.9.0を使う。
-`home/.pi/agent/mcp.json`からlocal stdioで遅延起動し、`--isolated`の一時profileに限る。既存Chromeへ接続する
-optionは持たせず、全toolをPiのapproval対象にする。usage statistics、CrUX送信、update checkは無効にする。
-MCP sampling、elicitation、auto auth、script modeも初期状態では無効にする。adapterがcompact footerを`accent`へ固定するため、
-公開status eventを`mcp-footer-dim.ts`で受け、接続数を参考先と同じ`0 MCP`形式・他の項目と同じ`dim`で再描画する。package本体はpatchしない。
+Chrome DevTools MCP serverは管理しない。Web applicationの確認はrepoのtest、既存script、`curl`／`jq`、必要なら
+browser automation scriptの順で行う。`home/.pi/agent/mcp.json`はserverを空にし、host設定の探索、sampling、elicitation、
+auto auth、script modeを無効のまま保つ。
 
-**理由**: `pi-web-access`が担わない動的UIの再現とDevTools診断を補える一方、通常profileや統計送信を許すと、
-認証済みbrowser dataと閲覧先が意図せず渡る。source HEAD `c54a4938`、npm integrity、license、CLI option、
-typecheckを隔離確認した。検査用Chromeを使ったupstream testは、macOSで巨大なfull-page screenshot 1件だけ
-Chromeの`Page is too large`で失敗した。通常はviewport screenshotを使い、巨大なfull-page captureは避ける。
+**理由**: 通常のAPI、build、静的content、再現可能な操作はBashの方が実行経路と結果を追いやすく、MCPの起動、approval、
+大きなbrowser snapshotを避けられる。console、network、performanceなどruntimeでしか得られない事実が繰り返し必要になった
+場合だけ、送信先、profile隔離、統計停止、tool approvalを再確認してbrowser MCPを再検討する。
 
 ## D-25 手動入口は、人が段を選ぶ場所だけに置く
 
@@ -689,7 +685,7 @@ Herdr 0.9.0はCatppuccinと同じ役割分担で、active tabとfocused pane枠�
 Pane枠は`ui.pane_borders = "auto"`でsplit時に描き、`pane_gaps = true`で隣接paneを分離する。
 `pane_outer_borders = true`として外周も描く。Inactive tabは`surface0 = bg_dim`の上へ`overlay0 = grey0`、名前付きなら
 `overlay1 = grey1`で描き、activeではなくても判読できるようにする。Sidebarとtab rowを含むpanelは最暗色`bg_dim`へ揃える。
-Spaces／agentsの横線とsidebar右端は`surface_dim`へ一段上の`bg0`を置き、消え切らない最小限のcontrastを付ける。
+Spaces／agentsの横線とsidebar右端は`surface_dim = "#15191b"`を置き、`sidebar_bg = "#1e2326"`より暗い構造線にする。
 残るsurface、補助text、branch、notification、warning tokenもDark Hardの`bg2`、`grey`、`purple`、`aqua`、`orange`へ
 明示し、土台の`terminal` themeからANSI色が混ざらないようにする。
 
@@ -700,6 +696,6 @@ GhosttyとPiは配布元のsource commitとMIT licenseをthemeの隣に置き、
 ## D-29 VimとHerdrのpane移動を同じkeyにする
 
 Herdr plugin `paulbkim-dev/vim-herdr-navigation`とNeovim側のnormal-mode mappingで`Ctrl+h/j/k/l`を共有する。
-Neovim内ではwindowを移動し、端では`HERDR_PANE_ID`を明示して隣のHerdr paneへ移る。Vim以外のpaneではHerdr paneを
-直接移動する。このglobal bindingがPiの`Ctrl+j`改行、`Ctrl+k`行末削除、`Ctrl+l` model selectorより優先されるtradeoffは、
-pane間移動を同じkeyに揃えるため受け入れる。外部pluginは`dot init/update`から導入・更新する。
+Neovim内ではwindowを移動し、端では`HERDR_PANE_ID`を明示して隣のHerdr paneへ移る。Herdrのglobal bindingは
+`Ctrl+h/k/l`に置き、Piの`Ctrl+k`行末削除と`Ctrl+l` model selectorよりpane移動を優先する。`Ctrl+j`はPiの改行へ渡し、
+Vim以外から下のpaneへ移るときは`prefix+j`を使う。外部pluginは`dot init/update`から導入・更新する。

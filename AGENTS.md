@@ -37,7 +37,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 
 - `skills/` — スキル正本（SKILL.md）を置く場所。`README.md:7-13`, `install.sh:58-78`
 - `home/` — 機械起動時の設定本体。`install.sh:80-113`, `README.md:12`, `home/.config/herdr/config.toml:1-84`
-- `home/.pi/agent/` — Pi拡張とMCP設定。`README.md`の構成表、`.gitignore:12-27`
+- `home/.pi/agent/` — Pi拡張とMCP安全設定。`README.md`の構成表、`.gitignore:12-27`
 - `dot` / `packages/` — HomebrewとPi packageの導入・更新・診断。`README.md`の入れ方、`packages/pi-packages.txt`
 - `tests/` — bootstrap・review・install・doctor・guardrail・worktree 検査。`README.md` の検査節
 - `DECISIONS.md` — 方針・境界の正本。`DECISIONS.md:1-4`
@@ -50,7 +50,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 - `home/` は `stow --no-folding` を前提に張る。
   `stow` 無しでは `home/.config/herdr/config.toml` を張らない。`install.sh:80-113`, `tests/install.sh:124-140`
 - `home/.pi/agent/*` は`.gitignore`で制御され、列挙した設定だけを復元する。`.gitignore:12-27`
-- Chrome DevTools MCPは固定版をisolated profileで遅延起動し、外部統計と全toolの無確認実行を止める。`home/.pi/agent/mcp.json`, `tests/doctor.sh`
+- 外部MCP serverは管理せず、host設定探索・sampling・elicitation・auto auth・script modeを止める。browser診断はBashから始める。`home/.pi/agent/mcp.json`, `tests/doctor.sh`, `DECISIONS.md`
 - `secret-scan` は `write`/`edit`/`bash` を走査し、拒否時は `denied`。
   `home/.pi/agent/extensions/secret-scan.ts:1-50`, `tests/secret-scan.sh:16-31`
 - Supabase prod は `SUPABASE_ENV=dev|prod` と `supabase db push` を確認経路で扱う。
@@ -60,7 +60,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
   調査は`skills/research/SKILL.md`からHerdrのbackground paneへ渡す。grillingのfact調査は依存するfrontierだけを止める。
   skillの発火・router規律は`skills/writing-for-agents/SKILL-MECHANICS.md`に置く。
 - worktree は `skills/worktrees/SKILL.md` をモデルからも呼べる。作成と Herdr tab 起動は別操作。
-- `dot init/update` は依存導入・ネットワーク・HOME変更を伴う。Pi packageは`packages/pi-packages.txt`から導入し、pi-extmgrの更新確認は既存設定を保つ。検査は`tests/bootstrap.sh`の偽コマンドと一時HOMEを使う。
+- `dot init/update` は依存導入・ネットワーク・HOME変更を伴う。Pi packageは`packages/pi-packages.txt`から導入する。検査は`tests/bootstrap.sh`の偽コマンドと一時HOMEを使う。
 
 ## Boundaries
 
@@ -78,7 +78,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 - 環境変数: `AGENTS_SKILLS_DIR`, `PI_SKILLS_DIR`, `STOW_TARGET`（`install.sh:9-15`）
 - 環境変数: `HERDR_DOCTOR_CONFIG`, `HERDR_BIN`, `PI_AGENT_DEFINITIONS_DIR`（`tests/doctor.sh:29-34`, `tests/doctor.sh:131-160`）
 - 環境変数: `SUPABASE_ENV`（`home/.pi/agent/extensions/supabase-prod-confirm.ts:18-23`）
-- 依存ツール: `git`, `stow`, `herdr`, `pi`, `node`, `python3`, `npx`, Chrome。導入一覧は`packages/`、入口は`dot`、MCP commandは`home/.pi/agent/mcp.json`。
+- 依存ツール: `git`, `stow`, `herdr`, `pi`, `node`, `python3`, `jq`。導入一覧は`packages/`、入口は`dot`。
 
 ## Notes
 

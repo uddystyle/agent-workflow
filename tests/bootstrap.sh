@@ -8,8 +8,8 @@ mkdir -p "$tmp/repo/tests" "$tmp/repo/packages" "$tmp/repo/home/.config/herdr" "
 cp "$repo/dot" "$tmp/repo/dot"
 cp "$repo/packages/Brewfile" "$tmp/repo/packages/Brewfile"
 cp "$repo/packages/pi-packages.txt" "$tmp/repo/packages/pi-packages.txt"
-cp "$repo/packages/pi-extmgr-auto-update.json" "$tmp/repo/packages/pi-extmgr-auto-update.json"
 cp "$repo/home/.config/herdr/plugins.txt" "$tmp/repo/home/.config/herdr/plugins.txt"
+cp "$repo/home/.config/herdr/config.toml" "$tmp/repo/home/.config/herdr/config.toml"
 printf 'export default function() {}\n' >"$tmp/npm/@earendil-works/pi-coding-agent/examples/extensions/subagent/index.ts"
 printf 'export {};\n' >"$tmp/npm/@earendil-works/pi-coding-agent/examples/extensions/subagent/agents.ts"
 for name in install.sh tests/doctor.sh; do
@@ -38,16 +38,15 @@ grep -q 'brew bundle install --no-upgrade' "$CALL_LOG" || fail 'init must instal
 grep -q '^tap "plannotator/tap"$' "$tmp/repo/packages/Brewfile" || fail 'Plannotator tap missing from managed dependencies'
 grep -q '^brew "plannotator-tui"$' "$tmp/repo/packages/Brewfile" || fail 'plannotator-tui missing from managed dependencies'
 grep -q '^brew "jq"$' "$tmp/repo/packages/Brewfile" || fail 'Vim navigation runtime dependency missing'
-grep -q '^pi install npm:pi-extmgr$' "$CALL_LOG" || fail 'managed pi-extmgr package missing'
+! grep -q '^pi install npm:pi-extmgr$' "$CALL_LOG" || fail 'retired pi-extmgr package was installed'
 grep -q '^pi install npm:pi-mcp-adapter$' "$CALL_LOG" || fail 'managed pi-mcp-adapter package missing'
-python3 - "$HOME/.pi/agent/.extmgr-cache/auto-update.json" <<'PY' || fail 'pi-extmgr schedule missing'
-import json,sys
-x=json.load(open(sys.argv[1]))
-assert x == {"intervalMs": 86400000, "enabled": True, "displayText": "1 day"}
-PY
 grep -q 'herdr integration install pi' "$CALL_LOG" || fail 'Pi integration missing'
 grep -q 'herdr plugin install plannotator/herdr-annotate --yes' "$CALL_LOG" || fail 'annotate plugin manifest not applied'
 grep -q 'herdr plugin install paulbkim-dev/vim-herdr-navigation --yes' "$CALL_LOG" || fail 'Vim navigation plugin manifest not applied'
+for key in h k l; do
+ grep -q "key = \"ctrl+$key\"" "$tmp/repo/home/.config/herdr/config.toml" || fail "Vim/Herdr Ctrl+$key binding missing"
+done
+! grep -q 'key = "ctrl+j"' "$tmp/repo/home/.config/herdr/config.toml" || fail 'Ctrl+j must remain available for Pi newlines'
 ! grep -q 'integration install claude' "$CALL_LOG" || fail 'Claude CLI was configured'
 ! grep -q 'pi update' "$CALL_LOG" || fail 'init upgraded Pi'
 run init >/dev/null

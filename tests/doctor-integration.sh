@@ -37,7 +37,7 @@ set -e
 [ "$status" -eq 0 ] || fail "隔離した配置を doctor が失敗とした: $out"
 [[ $out == *'herdr はEverforest配色と注意順・状態記号・画面内 toastでagentを観測する'* ]] || fail 'Herdr のthemeとagent観測設定を確認しなかった'
 [[ $out == *'Pi agent定義は読む道具だけを持つ'* ]] || fail '読み取り専用のagent定義を確認しなかった'
-[[ $out == *'Chrome DevTools MCPは隔離設定済み'* ]] || fail 'Chrome DevTools MCPの隔離設定を確認しなかった'
+[[ $out == *'管理対象の外部MCP serverはない'* ]] || fail '外部MCP serverが無いことを確認しなかった'
 [[ $out == *'plannotator-tui は agent から呼べる'* ]] || fail 'plannotator-tui の実行経路を確認しなかった'
 
 mkdir -p "$tmp/bad-agents"
@@ -109,7 +109,7 @@ check_default_model() {
 check_default_model ready 'OK   Pi のdefault provider/modelはcatalogに存在する'
 check_default_model missing 'WARN Pi のdefault provider/modelがcatalogに無い'
 check_default_model unreadable 'WARN Pi のmodel catalogを読めない'
-printf '%s\n' '{"defaultProvider":"alpha","theme":"everforest","packages":["npm:pi-extmgr","npm:pi-mcp-adapter"]}' >"$tmp/.pi/agent/settings.json"
+printf '%s\n' '{"defaultProvider":"alpha","theme":"everforest","packages":["npm:pi-mcp-adapter"]}' >"$tmp/.pi/agent/settings.json"
 out=$(env HOME="$tmp" PATH="$tmp/model-bin:$PATH" "$doctor_repo/tests/doctor.sh" 2>&1)
 [[ $out == *'管理対象のPi packagesは設定済み'* ]] || fail '管理対象のPi packageを確認しなかった'
 [[ $out == *'Piはrepo管理のEverforest themeを使う'* ]] || fail 'PiのEverforest themeを確認しなかった'

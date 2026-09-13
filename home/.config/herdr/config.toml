@@ -16,18 +16,13 @@ reload_config = "prefix+r"
 
 
 # Vim/Neovim内ではwindowを移動し、端では隣のHerdr paneへ抜ける。
-# Vim以外ではHerdr paneを直接移動するため、Piの同じCtrl keyよりこちらが優先される。
+# Ctrl+jはPiの改行へ渡す。Neovim側は自分のmappingで下へ移動でき、
+# Vim以外からHerdr paneを下へ移るときは既定のprefix+jを使う。
 [[keys.command]]
 key = "ctrl+h"
 type = "plugin_action"
 command = "vim-herdr-navigation.left"
 description = "左のVim windowまたはHerdr paneへ移動する"
-
-[[keys.command]]
-key = "ctrl+j"
-type = "plugin_action"
-command = "vim-herdr-navigation.down"
-description = "下のVim windowまたはHerdr paneへ移動する"
 
 [[keys.command]]
 key = "ctrl+k"
@@ -117,7 +112,7 @@ text = "#d3c6aa"
 accent = "#a7c080"      # green（active tab。pane枠はui.pane_bordersで消す）
 surface0 = "#1e2326"    # bg_dim（inactive tab背景）
 surface1 = "#374145"    # bg2（hover／active surface）
-surface_dim = "#272e33" # bg0（sidebar背景より一段だけ明るい区切り線）
+surface_dim = "#15191b" # sidebar背景より暗い構造区切り線
 overlay0 = "#7a8478"    # grey0（inactive tab名・secondary text）
 overlay1 = "#859289"    # grey1（名前を付けたinactive tab）
 subtext0 = "#9da9a0"    # grey2（補助label）

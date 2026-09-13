@@ -12,7 +12,7 @@ Herdr の pane で Pi を立ち上げ、Codex と必要な拡張を選んで使�
 | `home/`                    | マシンの設定。`~` と同じ形の木。stow で張る                |
 | `home/.pi/agent/extensions/` | Pi の拡張。秘密スキャンを含む |
 | `home/.pi/agent/themes/` | Piのthemeと外部source・license記録 |
-| `home/.pi/agent/mcp.json` | PiのMCP serverと安全側の実行設定 |
+| `home/.pi/agent/mcp.json` | PiのMCP安全設定（管理対象serverなし） |
 | `packages/pi-packages.txt` | 全環境へ導入するPi package |
 
 スキルは `~/.agents/skills/` を正本に置き、現在の consumer である Pi へ配る。
@@ -46,7 +46,7 @@ Herdr skillは同梱本文を保ち、別skillが明示的に要求した場合�
 ```
 
 `dot init` は`packages/Brewfile`の依存、未導入ならPi、`packages/pi-packages.txt`のpackage、設定、HerdrのPi連携と
-`home/.config/herdr/plugins.txt`のpluginを揃える。pi-extmgrの更新確認は初回だけ1日間隔で初期化し、既存設定は上書きしない。Chrome DevTools MCPは必要時に隔離Chromeを起動する。既存Piの更新はせず、シェル・エディタ・認証も変更しない。
+`home/.config/herdr/plugins.txt`のpluginを揃える。MCP serverは管理せず、既存Piの更新、シェル、エディタ、認証も変更しない。
 Pi は npm のグローバル導入を前提にする。他の導入経路で同梱例を見つけられない場合は止まる。
 
 | コマンド | 役割 |
