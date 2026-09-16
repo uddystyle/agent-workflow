@@ -13,6 +13,11 @@ onboarding = false
 [keys]
 prefix = "ctrl+,"
 reload_config = "prefix+r"
+# Navigate modeではSpaceをCtrl+j/kで選び、Agent切替はPiの入力を奪わないprefix付きにする。
+navigate_workspace_down = "ctrl+j"
+navigate_workspace_up = "ctrl+k"
+next_agent = "prefix+ctrl+j"
+previous_agent = "prefix+ctrl+k"
 
 [[keys.command]]
 key = "prefix+a"

@@ -697,4 +697,5 @@ selection、補助text、branch、notification、warning tokenはDark Hardの`bg
 
 Herdrは`Ctrl+h/j/k/l`をglobal bindingにせず、pane内applicationへ渡す。Neovimはnormal-mode mappingでwindowを移動し、
 端では`HERDR_PANE_ID`を明示して隣のHerdr paneへ移る。Piの標準selectorでは`Ctrl+j/k`を下／上へ割り当て、通常の入力欄では
-改行／行末削除を保つ。shellやPiからHerdr paneを移るときは`prefix+h/j/k/l`を使う。Herdr側のnavigation pluginは導入しない。
+改行／行末削除を保つ。HerdrのNavigate modeではSpace選択だけ`Ctrl+j/k`、Agent切替は`prefix+Ctrl+j/k`を使う。
+shellやPiからHerdr paneを移るときは`prefix+h/j/k/l`を使う。Herdr側のnavigation pluginは導入しない。

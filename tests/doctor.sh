@@ -123,12 +123,16 @@ def required_values(path):
                 section = line[1:-1]
                 continue
             match = re.match(r'([A-Za-z0-9_]+)\s*=\s*(?:"([^"]*)"|(true|false))', line)
-            if match and section in {"theme", "theme.custom", "ui", "ui.toast"}:
+            if match and section in {"keys", "theme", "theme.custom", "ui", "ui.toast"}:
                 values[(section, match.group(1))] = match.group(2) or match.group(3)
     return values
 
 try:
     values = required_values(os.environ["HERDR_CONFIG"])
+    assert values[("keys", "navigate_workspace_down")] == "ctrl+j"
+    assert values[("keys", "navigate_workspace_up")] == "ctrl+k"
+    assert values[("keys", "next_agent")] == "prefix+ctrl+j"
+    assert values[("keys", "previous_agent")] == "prefix+ctrl+k"
     assert values[("theme", "name")] == "terminal"
     assert ("theme.custom", "sidebar_bg") not in values
     assert values[("theme.custom", "active_row_bg")] == "reset"
