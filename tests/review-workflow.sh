@@ -73,6 +73,17 @@ mechanics=text('skills/writing-for-agents/SKILL-MECHANICS.md')
 assert 'SKILL-MECHANICS.md' in writing
 assert 'model-invoked' in mechanics and 'manual-only' in mechanics
 assert 'router skill' in mechanics and '共有reference' in mechanics
+diagnosing=text('skills/diagnosing-bugs/SKILL.md')
+assert 'disable-model-invocation: true' not in diagnosing
+assert 'red-capable' in diagnosing and '3–5 ranked hypotheses' in diagnosing
+assert 'scripts/hitl-loop.template.sh' in diagnosing and '[DEBUG-' in diagnosing
+assert '321658273cb1d20b76026717d027d505790106d4' in text('skills/diagnosing-bugs/SOURCE.md')
+assert 'MIT License' in text('skills/diagnosing-bugs/LICENSE')
+discoverable=text('skills/write-discoverable-code/SKILL.md')
+assert 'disable-model-invocation: true' not in discoverable
+assert 'One concept, one spelling' in discoverable and 'Keep strings whole' in discoverable
+assert 'edcdedb38a545f67c065f4084b3627517f0d79cf' in text('skills/write-discoverable-code/SOURCE.md')
+assert 'MIT License' in text('skills/write-discoverable-code/LICENSE')
 assert not (r/'home/.pi/agent/skills/implement/SKILL.md').exists()
 assert not (r/'skills/cua-driver').exists()
 assert not (r/'skills/computer-use-mcp').exists()
@@ -84,3 +95,4 @@ for p in (r/'skills').glob('*/SKILL.md'):
   assert p.stat().st_size<=10240,p
 print('PASS parallel review workflow contracts')
 PY
+bash -n "$repo/skills/diagnosing-bugs/scripts/hitl-loop.template.sh"

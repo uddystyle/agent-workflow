@@ -35,7 +35,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 
 ## How to navigate this codebase
 
-- `skills/` — スキル正本（SKILL.md）を置く場所。`README.md:7-13`, `install.sh:58-78`
+- `skills/` — スキル正本（SKILL.md）と外部skillのSOURCE／LICENSEを置く場所。`README.md:7-13`, `install.sh:58-78`
 - `home/` — 機械起動時の設定本体。`install.sh:80-113`, `README.md:12`, `home/.config/herdr/config.toml:1-84`
 - `home/.pi/agent/` — Pi拡張とMCP安全設定。`README.md`の構成表、`.gitignore:12-27`
 - `dot` / `packages/` — HomebrewとPi packageの導入・更新・診断。`README.md`の入れ方、`packages/pi-packages.txt`
@@ -57,6 +57,8 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
   `home/.pi/agent/extensions/supabase-prod-confirm.ts:2-5`, `tests/supabase-prod-confirm.sh:14-17`
 - レビューは `skills/code-review/SKILL.md` で規約・仕様を独立したparallel sub-agentsへ渡し、配置は起動する道具へ委ねる。
   smell baselineはskill本文に持つ。TypeScript／Effectの設計規律は`skills/coding-standards/SKILL.md`に置く。
+  原因不明のbugは`skills/diagnosing-bugs/SKILL.md`でred-capable loopを先に作る。codeの追加・renameでは
+  `skills/write-discoverable-code/SKILL.md`のplain-text search規律を適用する。
   調査は`skills/research/SKILL.md`からHerdrのbackground paneへ渡す。grillingのfact調査は依存するfrontierだけを止める。
   skillの発火・router規律は`skills/writing-for-agents/SKILL-MECHANICS.md`に置く。
 - worktree は `skills/worktrees/SKILL.md` をモデルからも呼べる。作成と Herdr tab 起動は別操作。

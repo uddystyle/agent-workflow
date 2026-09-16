@@ -699,3 +699,14 @@ Herdrは`Ctrl+h/j/k/l`をglobal bindingにせず、pane内applicationへ渡す�
 端では`HERDR_PANE_ID`を明示して隣のHerdr paneへ移る。Piの標準selectorでは`Ctrl+j/k`を下／上へ割り当て、通常の入力欄では
 改行／行末削除を保つ。HerdrのNavigate modeではSpace選択だけ`Ctrl+j/k`、Agent切替は`prefix+Ctrl+j/k`を使う。
 shellやPiからHerdr paneを移るときは`prefix+h/j/k/l`を使う。Herdr側のnavigation pluginは導入しない。
+
+## D-30 診断loopと検索可能性を独立したmodel-invoked skillにする
+
+原因不明のbugとperformance regressionには`diagnosing-bugs`を使い、実行済みでred-capableなfeedback loopを仮説より先に作る。
+codeの追加・変更・renameには`write-discoverable-code`を使い、plain-text searchでdefinition、constraint、literal、testへ辿れる
+名前と配置を選ぶ。前者は通常実装とは異なる診断workflow、後者は言語固有の設計規律より前に効く横断的な探索規律なので、
+`coding-standards`へ埋めずmodel-invoked skillとして分ける。
+
+参考先は`dmmulroy/.dotfiles` commit `fcdf060`。正本はそれぞれ`mattpocock/skills` commit `3216582`と
+`modem-dev/skills` commit `edcdedb`で、両方のMIT LICENSEとsource commit、upstream SHA-256をskillの隣へ置く。
+常時contextは短いdescriptionだけにし、本文は発火後に読む。

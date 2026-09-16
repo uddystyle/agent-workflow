@@ -122,6 +122,8 @@ Herdr の pane で対象の repo を開き、`pi` を起動する。
 ```
 
 `code-review`、`tdd`、`plannotator-tui`は手動で呼ぶ。`implement`の一括入口は置かず、必要な段を個別に選ぶ。
+原因不明のbugやperformance regressionでは`diagnosing-bugs`が再現loopから診断し、codeの追加・変更・renameでは
+`write-discoverable-code`がplain-text searchで辿れる名前・型・literal・配置を補う。
 TypeScript／Effectの変更では`coding-standards`が型・境界・回復・lintの規律を補う。
 
 レビューは参考先と同じく手動で呼び、StandardsとSpecを独立したparallel sub-agentsへ渡す。配置はagentを起動する道具の規則に委ねる。
