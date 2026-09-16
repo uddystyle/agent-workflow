@@ -81,7 +81,7 @@ name = "terminal"
 # sainnhe/everforest: dark hard
 # sidebar_bgとpanel_bgはterminal defaultを継承し、Ghosttyの透過とblurへ委ねる。
 # sidebar_bg = "#1e2326" # bg_dim（不透明に戻す場合）
-active_row_bg = "#2e383c"
+active_row_bg = "#232a2e" # Piのtool result背景と揃えたactive row
 selection_bg = "#4c3743"
 # panel_bg = "#272e33" # bg0
 # panel_bg = "#1e2326" # bg_dim（不透明に戻す場合）

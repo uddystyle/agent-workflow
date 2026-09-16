@@ -131,7 +131,7 @@ try:
     values = required_values(os.environ["HERDR_CONFIG"])
     assert values[("theme", "name")] == "terminal"
     assert ("theme.custom", "sidebar_bg") not in values
-    assert values[("theme.custom", "active_row_bg")] == "#2e383c"
+    assert values[("theme.custom", "active_row_bg")] == "#232a2e"
     assert values[("theme.custom", "selection_bg")] == "#4c3743"
     assert ("theme.custom", "panel_bg") not in values
     assert values[("theme.custom", "text")] == "#d3c6aa"

@@ -686,8 +686,8 @@ Pane枠は`ui.pane_borders = "auto"`でsplit時に描き、`pane_gaps = true`で
 `pane_outer_borders = true`として外周も描く。Inactive tabは`surface0 = bg_dim`の上へ`overlay0 = grey0`、名前付きなら
 `overlay1 = grey1`で描き、activeではなくても判読できるようにする。Sidebarとtab rowを含むpanelは背景色を指定せず、
 `terminal` themeのdefault backgroundを継承してGhosttyの透過とblurへ委ねる。Spaces／agentsの横線とsidebar右端は
-`surface_dim = "#15191b"`の暗い構造線を残す。選択面、補助text、branch、notification、warning tokenはDark Hardの
-`bg`、`grey`、`purple`、`aqua`、`orange`へ明示する。
+`surface_dim = "#15191b"`の暗い構造線を残す。Active rowはPiのtool result面と同じ`#232a2e`へ揃え、
+selection、補助text、branch、notification、warning tokenはDark Hardの`bg`、`grey`、`purple`、`aqua`、`orange`へ明示する。
 
 **理由**: Ghosttyだけを変えてもPiとHerdrの明示背景は残る。Sidebarとpanelの背景指定だけを外せば、状態を示す色と判読性を
 保ったままterminal全体の透過を揃えられる。GhosttyとPiは配布元のsource commitとMIT licenseをthemeの隣に置き、Herdrの
