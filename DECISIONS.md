@@ -684,18 +684,17 @@ Active tabとfocused pane枠はgreenの`theme.custom.accent`、unfocused pane枠
 Herdr 0.9.0はCatppuccinと同じ役割分担で、active tabとfocused pane枠の`accent`を共有する。
 Pane枠は`ui.pane_borders = "auto"`でsplit時に描き、`pane_gaps = true`で隣接paneを分離する。
 `pane_outer_borders = true`として外周も描く。Inactive tabは`surface0 = bg_dim`の上へ`overlay0 = grey0`、名前付きなら
-`overlay1 = grey1`で描き、activeではなくても判読できるようにする。Sidebarとtab rowを含むpanelは最暗色`bg_dim`へ揃える。
-Spaces／agentsの横線とsidebar右端は`surface_dim = "#15191b"`を置き、`sidebar_bg = "#1e2326"`より暗い構造線にする。
-残るsurface、補助text、branch、notification、warning tokenもDark Hardの`bg2`、`grey`、`purple`、`aqua`、`orange`へ
-明示し、土台の`terminal` themeからANSI色が混ざらないようにする。
+`overlay1 = grey1`で描き、activeではなくても判読できるようにする。Sidebarとtab rowを含むpanelは背景色を指定せず、
+`terminal` themeのdefault backgroundを継承してGhosttyの透過とblurへ委ねる。Spaces／agentsの横線とsidebar右端は
+`surface_dim = "#15191b"`の暗い構造線を残す。選択面、補助text、branch、notification、warning tokenはDark Hardの
+`bg`、`grey`、`purple`、`aqua`、`orange`へ明示する。
 
-**理由**: Ghosttyだけを変えてもPiとHerdrはそれぞれのthemeを描画するため、差し色がCatppuccinのまま残る。
-GhosttyとPiは配布元のsource commitとMIT licenseをthemeの隣に置き、Herdrは要求されたDark Hardの背景階調を
-公式paletteから明示することで、それぞれの色の由来と更新差分を確認できる。
+**理由**: Ghosttyだけを変えてもPiとHerdrの明示背景は残る。Sidebarとpanelの背景指定だけを外せば、状態を示す色と判読性を
+保ったままterminal全体の透過を揃えられる。GhosttyとPiは配布元のsource commitとMIT licenseをthemeの隣に置き、Herdrの
+明示色は公式paletteから選ぶことで、それぞれの色の由来と更新差分を確認できる。
 
-## D-29 VimとHerdrのpane移動を同じkeyにする
+## D-29 Ctrl+h/j/k/lはpane内applicationへ渡す
 
-Herdr plugin `paulbkim-dev/vim-herdr-navigation`とNeovim側のnormal-mode mappingで`Ctrl+h/j/k/l`を共有する。
-Neovim内ではwindowを移動し、端では`HERDR_PANE_ID`を明示して隣のHerdr paneへ移る。Herdrのglobal bindingは
-`Ctrl+h/l`に置き、`Ctrl+j/k`はPiへ渡す。Piの標準selectorでは`Ctrl+j/k`を下／上へ割り当て、通常の入力欄では
-改行／行末削除を保つ。Vim以外から上下のpaneへ移るときは`prefix+j/k`を使う。外部pluginは`dot init/update`から導入・更新する。
+Herdrは`Ctrl+h/j/k/l`をglobal bindingにせず、pane内applicationへ渡す。Neovimはnormal-mode mappingでwindowを移動し、
+端では`HERDR_PANE_ID`を明示して隣のHerdr paneへ移る。Piの標準selectorでは`Ctrl+j/k`を下／上へ割り当て、通常の入力欄では
+改行／行末削除を保つ。shellやPiからHerdr paneを移るときは`prefix+h/j/k/l`を使う。Herdr側のnavigation pluginは導入しない。

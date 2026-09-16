@@ -130,10 +130,10 @@ def required_values(path):
 try:
     values = required_values(os.environ["HERDR_CONFIG"])
     assert values[("theme", "name")] == "terminal"
-    assert values[("theme.custom", "sidebar_bg")] == "#1e2326"
+    assert ("theme.custom", "sidebar_bg") not in values
     assert values[("theme.custom", "active_row_bg")] == "#2e383c"
     assert values[("theme.custom", "selection_bg")] == "#4c3743"
-    assert values[("theme.custom", "panel_bg")] == "#1e2326"
+    assert ("theme.custom", "panel_bg") not in values
     assert values[("theme.custom", "text")] == "#d3c6aa"
     assert values[("theme.custom", "accent")] == "#a7c080"
     assert values[("theme.custom", "surface0")] == "#1e2326"

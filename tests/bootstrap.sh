@@ -44,12 +44,9 @@ grep -q '^brew "jq"$' "$tmp/repo/packages/Brewfile" || fail 'Vim navigation runt
 grep -q '^pi install npm:pi-mcp-adapter$' "$CALL_LOG" || fail 'managed pi-mcp-adapter package missing'
 grep -q 'herdr integration install pi' "$CALL_LOG" || fail 'Pi integration missing'
 grep -q 'herdr plugin install plannotator/herdr-annotate --yes' "$CALL_LOG" || fail 'annotate plugin manifest not applied'
-grep -q 'herdr plugin install paulbkim-dev/vim-herdr-navigation --yes' "$CALL_LOG" || fail 'Vim navigation plugin manifest not applied'
-for key in h l; do
- grep -q "key = \"ctrl+$key\"" "$tmp/repo/home/.config/herdr/config.toml" || fail "Vim/Herdr Ctrl+$key binding missing"
-done
-for key in j k; do
- ! grep -q "key = \"ctrl+$key\"" "$tmp/repo/home/.config/herdr/config.toml" || fail "Ctrl+$key must remain available to Pi"
+! grep -q 'herdr plugin install paulbkim-dev/vim-herdr-navigation --yes' "$CALL_LOG" || fail 'retired Vim navigation plugin was installed'
+for key in h j k l; do
+ ! grep -q "key = \"ctrl+$key\"" "$tmp/repo/home/.config/herdr/config.toml" || fail "Ctrl+$key must remain available to pane applications"
 done
 python3 - "$tmp/repo/home/.pi/agent/keybindings.json" <<'PY' || fail 'Pi selector Ctrl+j/k bindings missing'
 import json, sys

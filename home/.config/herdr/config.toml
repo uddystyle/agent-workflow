@@ -14,22 +14,6 @@ onboarding = false
 prefix = "ctrl+,"
 reload_config = "prefix+r"
 
-
-# Vim/Neovim内ではwindowを移動し、端では隣のHerdr paneへ抜ける。
-# Ctrl+j/kはPiの入力と選択UIへ渡す。Neovim側は自分のmappingで上下移動でき、
-# Vim以外からHerdr paneを上下へ移るときは既定のprefix+j/kを使う。
-[[keys.command]]
-key = "ctrl+h"
-type = "plugin_action"
-command = "vim-herdr-navigation.left"
-description = "左のVim windowまたはHerdr paneへ移動する"
-
-[[keys.command]]
-key = "ctrl+l"
-type = "plugin_action"
-command = "vim-herdr-navigation.right"
-description = "右のVim windowまたはHerdr paneへ移動する"
-
 [[keys.command]]
 key = "prefix+a"
 type = "plugin_action"
@@ -95,11 +79,12 @@ name = "terminal"
 # blue = "#7fbbb3"
 
 # sainnhe/everforest: dark hard
-sidebar_bg = "#1e2326"    # bg_dim（最暗色）
+# sidebar_bgとpanel_bgはterminal defaultを継承し、Ghosttyの透過とblurへ委ねる。
+# sidebar_bg = "#1e2326" # bg_dim（不透明に戻す場合）
 active_row_bg = "#2e383c"
 selection_bg = "#4c3743"
 # panel_bg = "#272e33" # bg0
-panel_bg = "#1e2326" # bg_dim（sidebarとtab rowを統一）
+# panel_bg = "#1e2326" # bg_dim（不透明に戻す場合）
 text = "#d3c6aa"
 # accent = "#495156" # bg4（active tab名のcontrastが足りない）
 # accent = "#272e33" # bg0（active tab名がpanel_bgと同色になる）
