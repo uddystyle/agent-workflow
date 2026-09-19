@@ -208,7 +208,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     return decision;
   }
 
-  async function applyRoute(routeId: CodexRouteId, source: RouteSource, reason: string, ctx: ExtensionContext, prompt = ""): Promise<boolean> {
+  async function applyRoute(routeId: CodexRouteId, source: RouteSource, reason: string, ctx: ExtensionContext, prompt = "", judgment?: JevRouteJudgment): Promise<boolean> {
     if (!config) return false;
     const route = config.routes[routeId];
     const candidate = ctx.modelRegistry.find(route.provider, route.model);
@@ -222,7 +222,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       state.pin = pin;
       state.manualSelection = source === "manual";
       pi.appendEntry(ROUTER_PIN_ENTRY, pin);
-      recordDecision(ctx, { routeId, source, reason }, prompt);
+      recordDecision(ctx, { routeId, source, reason, judgment }, prompt);
       return true;
     } finally {
       state.applyingRoute = false;
@@ -282,7 +282,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     try {
       const judgment = await classifyTaskWithJev(event.prompt, config, ctx.signal ?? new AbortController().signal);
       const selection = selectJevRoute(judgment, config.jev.minimumConfidence, config.fallbackRoute);
-      const applied = await applyRoute(selection.routeId, selection.source, selection.reason, ctx, event.prompt);
+      const applied = await applyRoute(selection.routeId, selection.source, selection.reason, ctx, event.prompt, selection.judgment);
       if (!applied) recordDecision(ctx, { routeId: config.fallbackRoute, source: "fallback", reason: "The selected route was unavailable; Pi kept its current selection.", judgment }, event.prompt);
     } catch (error) {
       const applied = await applyRoute(config.fallbackRoute, "fallback", `Jev was unavailable: ${errorMessage(error)}`, ctx, event.prompt);

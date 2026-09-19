@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Codex/Jev router が明示 override を外部通信なしで適用し、decisionを session に残す。
+# Codex/Jev router が明示 override と Jev 経路（fetch スタブ）で route を適用し、decision を session に残す。
+# Jev 経路では適用成功時も judgment（confidence・token usage）が decision に残ることまで検証する。
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -47,6 +48,23 @@ await command.handler("once hard", ctx);
 await handlers.get("before_agent_start")({ prompt: "Investigate an ambiguous production defect." }, ctx);
 assert.equal(ctx.model.id, "gpt-6-astra");
 assert.equal(thinking, "high");
+
+// Jev 経路（fetch をスタブ）: 適用成功時も judgment が decision に残る。
+process.env.TYPESAFE_API_KEY = "router-test-key";
+globalThis.fetch = async () => ({
+  ok: true,
+  json: async () => ({ answers: { route: { choice: "light", confidence: 0.9 } }, usage: { input_tokens: 273, output_tokens: 20 } }),
+});
+await command.handler("auto", ctx);
+await handlers.get("before_agent_start")({ prompt: "Format the README heading." }, ctx);
+assert.equal(ctx.model.id, "gpt-5.6-sol");
+assert.equal(thinking, "low");
+const jevDecision = entries.findLast((entry) => entry.customType === "codex-jev-router-decision").data;
+assert.equal(jevDecision.source, "auto");
+assert.equal(jevDecision.jev.confidence, 0.9);
+assert.equal(jevDecision.jev.inputTokens, 273);
+assert.equal(jevDecision.jev.outputTokens, 20);
+assert.equal(typeof jevDecision.jev.elapsedMs, "number");
 NODE
 
 printf 'PASS codex Jev router explicit override\n'
