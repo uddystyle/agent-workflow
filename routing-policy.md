@@ -61,10 +61,10 @@ The built-in `/model` and `/thinking` remain authoritative manual controls. On a
 
 `rollout.enabledRoutes` で段階展開を行う（実装 2026-09-19。方法は implementation-plan Milestone 4）:
 
-- **現在の stage（確認日 2026-09-19）:** `enabledRoutes: ["light"]`。Jev が `auto` で hard/very-hard を提案しても適用されず、NORMAL に落ちる。このとき decision entry に `rolloutGate: true` と `suggestedRouteId` が記録され、`/route report` の gated 集計で提案分布を観測できる。
+- **現在の stage（確認日 2026-09-19、レビュー実測は research.md §12）:** `enabledRoutes: ["light", "hard"]`（stage 2）。light・hard 提案は適用され、very-hard 提案は NORMAL に落ちる。このとき decision entry に `rolloutGate: true` と `suggestedRouteId` が記録され、`/route report` の gated 集計で提案分布を観測できる。stage 1（light のみ）は誤ルーティングレビュー実測で前進を判断した（hard 提案 conf 0.97 の正判定・閾値 0.70 が低信頼提案を吸収）。very-hard は Jev の非決定性（§12 で 0.47–0.96）と gate keyword（security/migration/schema 等）の独立補完を考慮し、gated を維持する。
 - **NORMAL は暗黙に常時有効**（fallback 既定であり、段階展開の対象外）。
 - **対象外（常に適用）:** `hard-gate` / `one-shot` / `pin` / `manual`。安全 gate とユーザー override は段階展開の影響を受けない。`fallback`（Jev 不可・unclear・低 confidence）も元々 NORMAL なので影響なし。
-- **段階の前進**（例: `["light", "hard"]` → 全 route）は、実 session の誤ルーティングを periodic レビューしてから行う。レビューは `/route report`（route/source 別・fallback rate・gated 集計）と decision entry（task は hash/bytes のみ・原文なし）を突き合わせ、成功指標（implementation-plan M4）を確認する。
+- **段階の前進**（例: 全 4 route＝very-hard 追加）は、実 session の誤ルーティングを periodic レビューしてから行う。レビューは `/route report`（route/source 別・fallback rate・gated 集計）と decision entry（task は hash/bytes のみ・原文なし）を突き合わせ、成功指標（implementation-plan M4）を確認する。
 
 ## Budget policy
 

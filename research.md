@@ -137,3 +137,33 @@
 - 補足: very-hard 群の大半は hard-gate keyword（schema / security / credential / production）が先に `hard` へ上げるため、実 pipeline では underpowered の実害はさらに小さい（gate は config `hardGate.patterns` の設定データ、routing-policy §実装済み範囲）。
 
 **決定:** `minimumConfidence` を **0.65 → 0.70** に変更（`home/.pi/agent/codex-jev-router.json`）。根拠は 0.70 で exact 91%・underpowered 0・coverage 69% が両立し、0.65 より underpowered が1件減り正解を失わない点。出典: 上記ローカル実測（再現コマンド・確認日）。**限界:** 合成16件・各1回の Jev 判定で n が小さく、Jev は完全決定的ではない（routing-policy §Jev question shape）。「閾値の調整」はこの標本での選点であり、実 session の誤ルーティングは継続監視する（decision entry は `/route report` で集計可能）。
+
+## §12. Guarded rollout 定期レビュー（stage 1 → 2 前進）（2026-09-19）
+
+**目的:** 実装計画 Milestone 4 の誤ルーティング定期レビュー。stage 1（`rollout.enabledRoutes: ["light"]`）適用中に実 pipeline の decision をレビューし、stage 前進可否を判断する。成功指標は routing-policy §Guarded rollout / implementation-plan M4（routine 判定の強 route 占有率低下・retry/fallback/manual override の異常増加なし）。
+
+**方法:** 実 session は stage 1 適用後に 0 件だった（最新の実 decision は 09-18・pre-fix の 4 件で jev/gating なし。judge-app の fallback 1 件は file >25MB で `buildRouteReport` の上限により集計対象外）。そこで実 pipeline を再現するコントロール下のライブ バッチ（使い捨て scratch、3 session）を実行した。再現（秘密は環境変数・値は出さない）:
+
+```sh
+scratch=$(mktemp -d /tmp/router-review-XXXXXX); mkdir -p "$scratch/sessions"
+zsh -i -c "cd '$scratch' && pi --session-dir '$scratch/sessions' -p '<prompt>'"   # 1 session ごとに実行
+```
+
+（確認日: 2026-09-19、Pi 実 session 3・Jev request 3。）
+
+**実測結果（stage 1 適用中・2026-09-19T13:13Z・3 session / 3 decision）:**
+
+| session | prompt 概要（合成） | Jev 提案 | conf | 適用 route | 所見 |
+|---|---|---|---|---|---|
+| A | "Reply with exactly: OK" | light | 0.90 | light（sol/low） | 節約経路が機能 |
+| C | YAML 解析の再現不能 bug、調査計画のみ | hard | 0.97 | **normal（gated）** | 高信頼・正判定だが stage 1 で gated |
+| E | 多年度 API versioning rollout 設計（要約のみ） | （low） | 0.47 | normal（fallback） | 閾値 0.70 が吸収 |
+
+集計: routes light 1 / normal 2、sources auto 2 / fallback 1、gated 1（suggested hard）、Jev 3 calls・1536 in / 163 out・avg conf 0.78・avg 602ms。
+
+**分析:**
+- Jev の hard 提案は conf 0.97 で、task 内容（再現不能の曖昧デバッグ）に対して正確だった。§11 でも hard 分類の ≥0.70 は exact 2/2・overspend 0。**hard を有効化しても、0.70 閾値が低 confidence の hard 提案（§11 の 0.31/0.44/0.55/0.68）を fallback に吸収する**ため、不確かな提案が astra を直接誘発しない。
+- very-hard はこの実測では conf 0.47（§11 の 0.96 と乖離。Jev の非決定性が実発現）。閾値が normal fallback に落とした。security/migration/schema 等の high-blast 管理項目は keyword hard gate が独立に hard へ上げるため、**very-hard は stage 2 でも gated 維持**が保守的に妥当（astra/xhigh の誘発を遅らせる）。
+- 実 session の pre-fix 4 件 + judge-app 1 件は jev/gating なし（記録形式が変わる前）で、このレビューの対象外。
+
+**決定:** stage 1 → **stage 2（`enabledRoutes: ["light", "hard"]`）** に前進（commit 後の設定反映）。stage 2 では hard 提案が astra/high で適用され、very-hard 提案が gated で normal に落ちて decision に残る。出典: 上記ローカル実測（再現コマンド・確認日）。**限界:** ライブ バッチは合成 prompt 3 件・各 1 session で n が小さい。実作業 session の蓄積（`/route report` の gated 集計）での継続レビューを次の stage 判断（very-hard 有効化）に用いる。

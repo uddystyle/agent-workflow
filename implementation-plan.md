@@ -4,16 +4,16 @@
 
 ## Status（2026-09-19）
 
-prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559ed`、TaskClassifier/report `6a5113c`、校准 `2a07b0e` / research.md §11、hard gate 設定データ化 `9ffd892`、guarded rollout stage 1 `72f9c49` / routing-policy §Guarded rollout、実測は research.md §10）。
+prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559ed`、TaskClassifier/report `6a5113c`、校准 `2a07b0e` / research.md §11、hard gate 設定データ化 `9ffd892`、guarded rollout stage 1 `72f9c49`、stage 2 `f72574e` / routing-policy §Guarded rollout・research.md §12、実測は research.md §10）。
 
 - Milestone 0（harness / baseline）: ✅ `tests/codex-jev-router.sh`（fake provider + fetch スタブで外部通信なし）。baseline は research.md §7。
 - Milestone 1（deterministic router skeleton）: ✅ `/route status|auto|pin|once|reset|explain|report`、typed config、pin/decision の custom entry と session-start 復元、`setModel()` + `setThinkingLevel()` の検証付き適用、`model_select`/`thinking_level_select` の manual 検出。
 - Milestone 2（Jev adapter）: ✅ 直接 TypeSafe System One API・`TYPESAFE_API_KEY`・bounded synopsis（2,000 bytes）・strict timeout（5,000ms）・no retry・schema 検証・fail-open・`TaskClassifier` interface 抽出（`createJevClassifier(model, timeoutMs)` が Jev を transport として実装）。
 - Milestone 3（observability）: 🔶 decision / pin entry は実装済み（version・at・routeId・source・reason・model/thinking・jev confidence/tokens/elapsedMs・task hash/bytes）。offline report command を `/route report` として実装（session ディレクトリ走査→route/source 別集計・fallback rate・Jev 集計を notify）。未実装は quota state の永続化のみ（測定限界、research.md §10）。
-- Milestone 4（calibration / guarded rollout）: 🔶 confidence 校准は実施済み（`jev-calibration.sh`/`.ts` が observation harness、ラベル付き16タスク実測・threshold sweep で `minimumConfidence` を 0.65 → 0.70 に調整。詳細は research.md §11）。guarded rollout は stage 1 を適用中（`rollout.enabledRoutes: ["light"]`、Jev が hard/very-hard を提案しても NORMAL に落とし、decision に `rolloutGate`/`suggestedRouteId` を記録。gated 集計は `/route report`）。残るは誤ルーティングの定期レビューと、その結果に基づく段階前進だけ。
+- Milestone 4（calibration / guarded rollout）: 🔶 confidence 校准は実施済み（`jev-calibration.sh`/`.ts` が observation harness、ラベル付き16タスク実測・threshold sweep で `minimumConfidence` を 0.65 → 0.70 に調整。詳細は research.md §11）。guarded rollout は **stage 2 適用中**（`rollout.enabledRoutes: ["light", "hard"]`。stage 1→2 は誤ルーティング定期レビューのライブ実測で判断、詳細は research.md §12）。very-hard 提案は gated で decision に `rolloutGate`/`suggestedRouteId` を残し `/route report` の gated 集計で観測。残るは very-hard 有効化の判断材料になる実 session 蓄積の定期レビューだけ。
 - 将来境界（BudgetManager / GenerationFallback / project-local opt-out）: 未実装（architecture.md の乖離欄と同一）。
 
-未実装のまま残る点: budget `manual`/`estimated`、quota state の永続化、project-local opt-out、M4 の誤ルーティング定期レビューと段階前進。observation は `jev-calibration.sh`（§11）、hard gate は設定データ化（`hardGate.patterns`）、guarded rollout は stage 1（`rollout.enabledRoutes: ["light"]`）適用済み。
+未実装のまま残る点: budget `manual`/`estimated`、quota state の永続化、project-local opt-out、M4 の very-hard 有効化判断（実 session 蓄積レビュー）。observation は `jev-calibration.sh`（§11）、hard gate は設定データ化（`hardGate.patterns`）、guarded rollout は stage 2（`rollout.enabledRoutes: ["light", "hard"]`）適用済み（§12）。
 
 ## Scope
 
