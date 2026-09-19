@@ -4,7 +4,7 @@
 
 ## Status（2026-09-19）
 
-prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559ed`、TaskClassifier/report `6a5113c`、校准 `2a07b0e` / research.md §11、hard gate 設定データ化 `9ffd892`、guarded rollout stage 1 `72f9c49`、stage 2 `f72574e` / routing-policy §Guarded rollout・research.md §12、quota state 永続化 `76f4303` / routing-policy §Budget policy・research.md §13、project-local opt-out `0d17bb0` / routing-policy §Project-local config・research.md §14、project-local override 層 `5900fb3` / routing-policy §Project-local config・research.md §16、very-hard 追跡レビュー `00294eb` / research.md §15、実測は research.md §10）。
+prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559ed`、TaskClassifier/report `6a5113c`、校准 `2a07b0e` / research.md §11、hard gate 設定データ化 `9ffd892`、guarded rollout stage 1 `72f9c49`、stage 2 `f72574e` / routing-policy §Guarded rollout・research.md §12、quota state 永続化 `76f4303` / routing-policy §Budget policy・research.md §13、project-local opt-out `0d17bb0` / routing-policy §Project-local config・research.md §14、project-local override 層 `5900fb3` / routing-policy §Project-local config・research.md §16、very-hard 追跡レビュー `00294eb` / research.md §15、BudgetManager/GenerationFallback interface 化 `73fbe08` / routing-policy §Budget policy・research.md §17、実測は research.md §10）。
 
 - Milestone 0（harness / baseline）: ✅ `tests/codex-jev-router.sh`（fake provider + fetch スタブで外部通信なし）。baseline は research.md §7。
 - Milestone 1（deterministic router skeleton）: ✅ `/route status|auto|pin|once|reset|explain|report`、typed config、pin/decision の custom entry と session-start 復元、`setModel()` + `setThinkingLevel()` の検証付き適用、`model_select`/`thinking_level_select` の manual 検出。
