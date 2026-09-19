@@ -396,3 +396,29 @@ for test in tests/*.sh; do bash "$test" || exit; done              # 全スイ�
 型チェック（一時 tsconfig、§17 と同一手順）PASS。
 
 **限界:** fixture は 6 snapshot（30 判定）で小規模。idle は信用しない（上記）。live 実行（`herdr agent get` + `herdr agent read --source detection`）は HERDR_ENV=1 が必要で、本セッションは herdr 外のため **校准のみ実測**。`unknown` は完了を意味しない（SKILL.md:59）ので、fell-over 高でも作業継続の可能性の判断は人がする。出典: herdr SKILL.md:55-59・DECISIONS.md D-19（ローカル正本）＋ローカル実測（確認日 2026-09-20）。Noul の API 形状は §19 と同じ一次資料（<https://docs.typesafe.ai/primitives/noul>・2026-09-20）。
+
+## §21 code-review findings 重大度順位（Jev Score）
+
+- **目的**: code-review の出力（1 軸分 findings）を重大度で順位付けし、§5「各軸内で最も重要な問題を 1 行で」の根拠を機械的に出す consult。判定は人がする・routing 不変。
+- **API 形状**（一次資料 <https://docs.typesafe.ai/primitives/score>・確認日 2026-09-20）: `questions.<id> = { type: "score", instructions, criteria: [順序付きレベル配列（低→高・最大 10 レベル）] }`、response は `answers.<id> = { type, score（0..top）, confidence, probabilities, legend }`。**複数 Score 問は 1 request に並列**（state は共有、問ごとの instructions で対象を指定）。スコアはレベル境界に丸めると 1 つの結果になる。
+- **設計**: code-review SKILL §5「軸を跨いだ順位付けはしない」に従い、**1 軸の findings を 1 ファイル・1 request**。state は番号付き行（`#1 <finding>`…）、問は finding ごとに `sev_k`。レベルは 4 段階（`FINDING_SEVERITY_CRITERIA`: 0 Cosmetic / 1 Should fix / 2 Must fix / 3 Blocker、状況記述スタイル）。findings は改行構造を保つ redaction（`createRedactedFindingsSynopsis`・8,000 bytes・全文 sha256・原文非保存）。`createBoundedSynopsis` は空白を圧縮するので findings には使わない。
+- **実装**: `SeverityRanker` 境界（`createJevSeverityRanker`・`createRedactedFindingsSynopsis`・`parseFindingsRank`・`formatFindingsRank`）+ `review-rank.sh`/`.ts`。実用 `<findings-file>`（1 行 1 finding = 1 軸）、校准 `--calibrate`。
+- **実測**（確認日 2026-09-20、model `jev-1.13.0`・ラベル付き代表 10 findings（standards 6 + spec 4）を 1 request に全問並列）:
+
+| 軸 | label（人） | score（Jev） | class accuracy | 順位整合 |
+|---|---|---|---|---|
+| standards | [1,3,0,1,3,2] | [0.29, 2.94, 0.20, 0.97, 2.55, 1.47] | 67% | **100%** |
+| spec | [3,2,2,1] | [2.51, 1.37, 2.07, 1.07] | 75% | **100%** |
+
+- **順位整合（pairwise concordance）は 2 軸とも 100%**——重大度の相対順序が人の期待どおり。バッチ設計（番号付き state + 問ごとの Score・1 request）は順位をスクランブルしない。**順位付け（本機能の中核）として使用可**。
+- **blocker rule（score ≥ 2.5 ↔ label 3）: 10/10 一致**——「ブロッカー判定」は絶対境界でも信頼できる。
+- class accuracy は 67%/75% で**絶対レベル境界は soft**（level 1 が 0.29、level 2 が 1.47 など）——「0/1/2/3 のラベルそのもの」を厳守する用途には使わず、**順位と blocker 判定に使う**。
+
+**再現コマンド:**
+```sh
+zsh -i -c 'cd <repo>/main && bash review-rank.sh --calibrate'   # 校准（ラベル付き 10 findings + 順位整合・blocker rule）· 要 interactive zsh の TYPESAFE_API_KEY
+bash review-rank.sh <findings-file>                              # 実用: 1 行 1 finding（1 ファイル = 1 軸）
+for test in tests/*.sh; do bash "$test" || exit; done            # 全スイート（fetch スタブ・外部通信なし）
+```
+
+**限界:** fixture は 10 findings で小規模。絶対レベル境界は soft（上記）。上限は 8,000 **bytes**（行数でなく byte で数える）で超過分は末尾から切り捨て——harness は件数不一致をエラーにするので、軸を分けるか件数を減らす。出典: <https://docs.typesafe.ai/primitives/score>（2026-09-20）＋ローカル実測。

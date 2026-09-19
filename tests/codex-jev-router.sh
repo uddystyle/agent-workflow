@@ -2,7 +2,7 @@
 # Codex/Jev router が明示 override と Jev 経路（fetch スタブ）で route を適用し、decision を session に残す。
 # Jev 経路では適用成功時も judgment（confidence・token usage）が decision に残ることまで検証する。
 # さらに TaskClassifier 境界（createJevClassifier）、HandoffVerifier 境界（Noul 4 問・createJevHandoffVerifier）、
-# StateClassifier 境界（Noul 5 問・createJevStateClassifier）、
+# StateClassifier 境界（Noul 5 問・createJevStateClassifier）、SeverityRanker 境界（Score・createJevSeverityRanker）、
 # BudgetManager / GenerationFallback 境界、
 # /route report の集計・走査、project-local config（opt-out / enabled override / route 上書き）を検証する。
 set -euo pipefail
@@ -183,6 +183,56 @@ assert.equal(paneBounded.sha256.length, 64);
 // 不正な Noul answer（noul 欠落）は明示エラーで失敗する。
 globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { idle: { type: "noul", noul: 0.9 } } }) });
 await assert.rejects(stateClassifier.classify({ text: "x", byteLength: 1, sha256: "s" }), /malformed/);
+
+// Severity ranker 境界: 1 軸の findings を Score で順位付けする（consult・軸を跨がない）。
+const ranker = extension.createJevSeverityRanker("jev-1.13.0", 5000);
+delete process.env.TYPESAFE_API_KEY;
+await assert.rejects(ranker.rank({ text: "src/a.ts — typo", byteLength: 16, sha256: "z" }), /TYPESAFE_API_KEY is not configured/);
+process.env.TYPESAFE_API_KEY = "router-test-key";
+let rankRequest;
+globalThis.fetch = async (url, options) => {
+  rankRequest = { url, options };
+  return { ok: true, json: async () => ({ answers: { sev_1: { type: "score", score: 0.5, confidence: 0.9 }, sev_2: { type: "score", score: 3.0, confidence: 1.0 }, sev_3: { type: "score", score: 1.2, confidence: 0.4 } }, usage: { input_tokens: 720, output_tokens: 60 } }) };
+};
+const rankFindings = ["src/ui.tsx — タイポ「送申」", "src/router.ts — STRIPE_SECRET_KEY の値を config に直接書いている", "src/format.ts — 金額を number で持つ"];
+const rankSynopsis = extension.createRedactedFindingsSynopsis(rankFindings.join("\n"));
+const rank = await ranker.rank(rankSynopsis);
+assert.equal(rank.items.length, 3);
+assert.equal(rank.items[0].index, 1);
+assert.equal(rank.items[0].score, 0.5);
+assert.equal(rank.items[1].score, 3.0);
+assert.equal(rank.items[1].confidence, 1.0);
+assert.equal(rank.items[2].score, 1.2);
+assert.equal(rank.inputTokens, 720);
+assert.equal(rank.outputTokens, 60);
+const rankBody = JSON.parse(rankRequest.options.body);
+assert.equal(rankBody.model, "jev-1.13.0");
+assert.equal(rankBody.state.findings.split("\n").length, 3, "findings は行構造を保持する");
+assert.ok(rankBody.state.findings.includes("#2 src/router.ts"), "行番号付き state");
+assert.equal(rankBody.questions.sev_1.type, "score");
+assert.equal(rankBody.questions.sev_2.type, "score");
+assert.equal(rankBody.questions.sev_3.type, "score");
+assert.equal(rankBody.questions.sev_1.criteria.length, 4);
+assert.equal(extension.FINDING_SEVERITY_CRITERIA.length, 4);
+const rankedLines = extension.formatFindingsRank(rank, rankFindings).split("\n");
+assert.equal(rankedLines.length, 3);
+assert.ok(rankedLines[0].includes("3.00"), "score 降順で先頭が最重大");
+assert.ok(rankedLines[0].includes("src/router.ts"));
+assert.ok(rankedLines[2].includes("src/ui.tsx"), "最小が末尾");
+// 不正な answer（score 欠落）は明示エラーで失敗する。
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { sev_1: { type: "score", confidence: 0.5 } } }) });
+await assert.rejects(ranker.rank({ text: "a", byteLength: 1, sha256: "s" }), /malformed/);
+// 範囲外 score も明示エラー。
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { sev_1: { type: "score", score: 9, confidence: 0.5 } } }) });
+await assert.rejects(ranker.rank({ text: "a", byteLength: 1, sha256: "s" }), /malformed/);
+// 行数が不足する answer も明示エラー（expectedCount と一致しない）。parseFindingsRank は同期関数なので assert.throws。
+assert.throws(() => extension.parseFindingsRank({ answers: { sev_1: { type: "score", score: 1, confidence: 0.5 } } }, 1, 2), /malformed/);
+// redaction は行を保持し、8,000 char で切る。
+const rankLong = Array.from({ length: 600 }, (_, i) => `src/f${i}.ts — 指摘 ${i}`).join("\n");
+const rankSyn = extension.createRedactedFindingsSynopsis(rankLong);
+assert.equal(rankSyn.text.split("\n").length > 50, true, "行構造が保持される");
+assert.ok(Buffer.byteLength(rankSyn.text) <= 8000);
+assert.equal(rankSyn.sha256.length, 64);
 
 // 純粋集計: aggregateRouteDecisions。
 const aggregated = extension.aggregateRouteDecisions([

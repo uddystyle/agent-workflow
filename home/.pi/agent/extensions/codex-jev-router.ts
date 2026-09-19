@@ -839,6 +839,117 @@ export function createJevStateClassifier(model: string, timeoutMs: number): Stat
   };
 }
 
+// ---------------------------------------------------------------------------
+// Finding severity ranking (Score) — consult boundary for code-review findings.
+// code-review SKILL §5: 軸を跨いだ順位付けはしない。だから 1 軸の findings を 1 request
+// にまとめ、finding ごとに Score を出す（docs.typesafe.ai/primitives/score）。
+// Observation-only: 順位は consult——人が最終判断する。route は何も変えない。
+// ---------------------------------------------------------------------------
+
+/** Ordered severity levels, low → high. Top level number = criteria.length - 1. */
+export const FINDING_SEVERITY_CRITERIA: string[] = [
+  "Cosmetic: typo, naming nit, or optional polish. No functional, convention, or spec impact; merging without fixing would still be acceptable.",
+  "Should fix: a clear deviation from the repo's conventions or the spec. It would be noticed in review, but nothing breaks and no requirement is missing.",
+  "Must fix: a real defect: wrong behavior, a missed spec requirement, or a correctness or security risk that will bite later.",
+  "Blocker: must not merge: data loss, security exposure, or a required behavior that is absent or plainly wrong.",
+];
+
+export type FindingSeverity = { index: number; score: number; confidence: number };
+
+export type FindingsRanking = {
+  items: FindingSeverity[];
+  inputTokens?: number;
+  outputTokens?: number;
+  elapsedMs: number;
+};
+
+export type RedactedFindingsSynopsis = { text: string; byteLength: number; sha256: string };
+
+/** Policy-independent ranking boundary so callers do not depend on the Jev transport. */
+export interface SeverityRanker {
+  rank(input: RedactedFindingsSynopsis, signal?: AbortSignal): Promise<FindingsRanking>;
+}
+
+/** Redacts one axis's findings (one per line) into a bounded input; lines are preserved, the original text is never persisted. */
+export function createRedactedFindingsSynopsis(text: string): RedactedFindingsSynopsis {
+  const lines = text.split("\n").map((line) => line.replace(/\s+/g, " ").trim()).filter((line) => line.length > 0);
+  const kept: string[] = [];
+  let total = 0;
+  for (const line of lines) {
+    if (total + Buffer.byteLength(line) + 1 > 8_000) break;
+    kept.push(line);
+    total += Buffer.byteLength(line) + 1;
+  }
+  const snippet = kept.join("\n");
+  return { text: snippet, byteLength: Buffer.byteLength(snippet), sha256: createHash("sha256").update(snippet).digest("hex") };
+}
+
+/** Converts a TypeSafe System One Score response into per-finding severities. */
+export function parseFindingsRank(value: unknown, elapsedMs: number, expectedCount: number): FindingsRanking {
+  if (!isRecord(value) || !isRecord(value.answers)) throw new Error("codex-jev-router: Jev findings response has no answers.");
+  const answers = value.answers;
+  const usage = isRecord(value.usage) ? value.usage : undefined;
+  const topLevel = FINDING_SEVERITY_CRITERIA.length - 1;
+  const items: FindingSeverity[] = [];
+  for (let k = 1; k <= expectedCount; k += 1) {
+    const raw = answers[`sev_${k}`];
+    const answer = isRecord(raw) ? raw : undefined;
+    const score = answer?.score;
+    const confidence = answer?.confidence;
+    if (typeof score !== "number" || score < 0 || score > topLevel
+      || typeof confidence !== "number" || confidence < 0 || confidence > 1) {
+      throw new Error("codex-jev-router: Jev severity score answer is malformed.");
+    }
+    items.push({ index: k, score, confidence });
+  }
+  return {
+    items,
+    inputTokens: numberOrUndefined(usage?.input_tokens),
+    outputTokens: numberOrUndefined(usage?.output_tokens),
+    elapsedMs,
+  };
+}
+
+/** Pure display helper: findings sorted by score (tie: confidence). Ranking only, never a gate. */
+export function formatFindingsRank(ranking: FindingsRanking, findings: readonly string[]): string {
+  const ranked = [...ranking.items].sort((a, b) => b.score - a.score || b.confidence - a.confidence);
+  return ranked
+    .map((item) => `${item.score.toFixed(2)} @${Math.round(item.confidence * 100)}%  ${findings[item.index - 1] ?? ""}`)
+    .join("\n");
+}
+
+/** Builds the Score finding-ranking transport behind the SeverityRanker boundary. */
+export function createJevSeverityRanker(model: string, timeoutMs: number): SeverityRanker {
+  return {
+    async rank(input, signal) {
+      const apiKey = process.env.TYPESAFE_API_KEY?.trim();
+      if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
+      const lines = input.text.split("\n").filter((line) => line.trim().length > 0);
+      if (lines.length === 0) throw new Error("codex-jev-router: findings input is empty.");
+      const numbered = lines.map((line, i) => `#${i + 1} ${line}`).join("\n");
+      const questions: Record<string, unknown> = {};
+      for (let k = 1; k <= lines.length; k += 1) {
+        questions[`sev_${k}`] = {
+          type: "score",
+          instructions: `How severe is finding #${k}? Rate the finding text, not the file's general quality.`,
+          criteria: FINDING_SEVERITY_CRITERIA,
+        };
+      }
+      const timeout = AbortSignal.timeout(timeoutMs);
+      const combined = AbortSignal.any([signal ?? new AbortController().signal, timeout]);
+      const startedAt = performance.now();
+      const response = await fetch("https://api.typesafe.ai/v1/systemone", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ model, state: { findings: numbered }, questions }),
+        signal: combined,
+      });
+      if (!response.ok) throw new Error(`codex-jev-router: Jev request failed with HTTP ${response.status}.`);
+      return parseFindingsRank(await response.json(), Math.round(performance.now() - startedAt), lines.length);
+    },
+  };
+}
+
 export default function codexJevRouter(pi: ExtensionAPI): void {
   let globalConfig: RouterConfig | undefined;
   let config: RouterConfig | undefined; // effective for the current session (global + project overrides)
