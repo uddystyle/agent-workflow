@@ -1,6 +1,19 @@
-# Minimal implementation plan — no implementation in this phase
+# Minimal implementation plan
 
-確認日: 2026-09-18。This plan begins only after approval of the findings and policy documents.
+確認日: 2026-09-18 / 2026-09-19。この plan は findings / policy 承認後に始まる。
+
+## Status（2026-09-19）
+
+prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559ed`、実測は research.md §10）。
+
+- Milestone 0（harness / baseline）: ✅ `tests/codex-jev-router.sh`（fake provider + fetch スタブで外部通信なし）。baseline は research.md §7。
+- Milestone 1（deterministic router skeleton）: ✅ `/route status|auto|pin|once|reset|explain`、typed config、pin/decision の custom entry と session-start 復元、`setModel()` + `setThinkingLevel()` の検証付き適用、`model_select`/`thinking_level_select` の manual 検出。
+- Milestone 2（Jev adapter）: ✅ 直接 TypeSafe System One API・`TYPESAFE_API_KEY`・bounded synopsis（2,000 bytes）・strict timeout（5,000ms）・no retry・schema 検証・fail-open。ただし `TaskClassifier` interface の抽出はせず inline 実装。
+- Milestone 3（observability）: 🔶 decision / pin entry は実装済み（version・at・routeId・source・reason・model/thinking・jev confidence/tokens/elapsedMs・task hash/bytes）。offline report command は未実装。quota state は `unknown` のみ。
+- Milestone 4（calibration / guarded rollout）: 未着手。`minimumConfidence: 0.65` は校准前基線。観測専用 mode も未実装。
+- 将来境界（BudgetManager / GenerationFallback / project-local opt-out）: 未実装（architecture.md の乖離欄と同一）。
+
+未実装のまま残る点: `TaskClassifier` interface、offline report、observation-only mode、budget `manual`/`estimated`、project-local opt-out、hard gate の設定データ化。
 
 ## Scope
 

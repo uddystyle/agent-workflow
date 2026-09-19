@@ -1,6 +1,6 @@
 # Pi / Codex Token Management with Jev — architecture proposal
 
-確認日: 2026-09-18。事実根拠は [research.md](research.md)。本書は提案であり、production implementation ではない。
+確認日: 2026-09-18 / 2026-09-19。事実根拠は [research.md](research.md)（§10 に実セッション実測）。本書で設計した router の prototype（`codex-jev-router.ts` / `codex-jev-router.json`）は実装・展開済みで、実測を含む。commit `3a873c1`（Jev model pin）、`c5ca162`（judgment 永続化）、`4f559ed`（実測記録）。未実装の将来境界（BudgetManager・GenerationFallback・project-local opt-out）は提案のまま。
 
 ## 結論
 
@@ -86,3 +86,16 @@ The ledger distinguishes:
 2. Jev evaluation usage/cost.
 3. local budget estimates.
 4. unavailable subscription quota (explicitly `unknown`, never fabricated).
+
+## 実装済み範囲と乖離（2026-09-19）
+
+構成図の流れは prototype で実装済み: one-shot / session override（`/route once|pin`）、session-start の pin 復元、keyword hard gate（→ `hard`）、bounded redacted synopsis（2,000 bytes・sha256・原文非保存）、Jev Choice 分類（1 request・strict timeout・no retry・`TYPESAFE_API_KEY`）、confidence 閾値、`setModel()` + `setThinkingLevel()` の検証付き適用、pin/decision の custom entry 永続化、fail-open fallback。実測は research.md §10。
+
+提案からの乖離:
+
+- hard gate は正規表現の keyword 判定で `hard` にのみ上げる（`very-hard` への切替や追加 confirmation はしない）。gate は設定データでなくコード内のため、調整は extension の変更になる。
+- Jev は Choice のみ。提案の optional Nouls（`security_sensitive` / `migration` / `ambiguous_requirements`）は未実装で、security/migration は keyword gate で拾う。
+- budget state（`manual` / `estimated`）は未実装。`/route status` は quota を `unknown` と表示するだけ。
+- 観測は custom entry（decision / pin）のみで、local export file は未作成。`/route explain` は最新 decision の reason を返す。
+- config は global（`~/.pi/agent/codex-jev-router.json`、repo への symlink）のみで、project-local opt-out は未実装。
+- route の capability 検証は session_start の eager でなく、apply 時に `ctx.modelRegistry.find()` で行う。

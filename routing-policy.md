@@ -1,6 +1,6 @@
 # Routing policy proposal
 
-確認日: 2026-09-18。これは MVP 前の policy proposal である。runtime facts と限界は [research.md](research.md)、構成は [architecture.md](architecture.md) を正本にする。
+確認日: 2026-09-18 / 2026-09-19。この policy は prototype（`codex-jev-router.ts` / `codex-jev-router.json`）として実装済みで、実セッションの実測がある（commit `3a873c1`, `c5ca162`, `4f559ed`）。runtime facts と限界は [research.md](research.md)（実測は §10）、構成は [architecture.md](architecture.md) を正本にする。
 
 ## Priority order
 
@@ -33,6 +33,8 @@ Use one Choice question with `light`, `normal`, `hard`, `very_hard`, and `unclea
 
 Use `unclear` or low confidence as NORMAL. Confidence is distribution concentration, not evidence that an expensive route is warranted. Record answer probabilities if returned, but do not select on a single arbitrary global threshold before calibration.
 
+実装（2026-09-19）: Choice のみで、Nouls は未実装（security/migration 等は keyword hard gate が拾う）。`minimumConfidence: 0.65` を校准前の基線として config に保持する。確率・token usage は decision entry に記録される（commit `c5ca162`。実測は research.md §10）。
+
 ## Candidate models and calibration
 
 The present Pi catalog contains `openai-codex` models only. The enabled scope presently includes `gpt-5.6-terra`, `gpt-6-astra`, `gpt-5.6-sol`, and `gpt-5.6-luna`; default is Terra at medium. Pi runtime must determine which thinking levels each candidate actually supports.
@@ -43,23 +45,23 @@ Do not encode assertions such as “Astra is always strongest” or “Sol is ch
 
 ## Overrides and UX
 
-Proposed extension commands:
+Implemented extension commands（2026-09-19、prototype）:
 
-- `/route status` — current pin, effective model/thinking, budget state, and latest decision.
+- `/route status` — current pin, effective model/thinking, and quota state（`unknown` 表示のみ）。latest decision は `/route explain`。
 - `/route auto` — clear user pin; next eligible prompt gets one routing decision.
 - `/route pin light|normal|hard|very-hard` — pin a validated class for this session.
 - `/route once light|normal|hard|very-hard` — affects only the next eligible prompt.
 - `/route reset` — clear pin and pending one-shot override.
 - `/route explain` — show the latest recorded reason, never hidden prompt text.
 
-The built-in `/model` and `/thinking` remain authoritative manual controls. On a manual model/thinking change, the extension records `manual_override` and does not silently reverse it. This is more predictable than attempting to infer an override from free text.
+The built-in `/model` and `/thinking` remain authoritative manual controls. On a manual model/thinking change, the extension writes a pin entry with source `manual` and does not silently reverse it（実装済み）. This is more predictable than attempting to infer an override from free text.
 
 ## Budget policy
 
 No public API was confirmed for an individual ChatGPT/Codex subscription's remaining five-hour/weekly allowance or reset time. Therefore MVP policy has only these valid states:
 
-- `unknown` — default for subscription quota.
-- `manual` — user-configured soft budget/reset information.
-- `estimated` — local provider-reported token/request rolling totals; labelled non-authoritative.
+- `unknown` — default for subscription quota. 実装（2026-09-19）はこの状態のみで、`/route status` が「subscription quota unknown」と表示する。
+- `manual` — user-configured soft budget/reset information. 未実装。
+- `estimated` — local provider-reported token/request rolling totals; labelled non-authoritative. 未実装。
 
 Budget policy may nudge an unpinned, low-risk task down only when a configured local estimate crosses a soft threshold. It must never interrupt a user override or downgrade a hard-gated task. A future API-key provider fallback can implement the same interface without changing routing semantics.
