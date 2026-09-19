@@ -440,3 +440,17 @@ for test in tests/*.sh; do bash "$test" || exit; done            # 全スイー�
 **session 状況:** §18 と同一——agent-workflow-main の最新 session（2026-09-18T12-12-02Z 開始）は auto-light pin 継続で最終書き込み 09-19T13:27 のまま、再分類による新規 decision なし。§19–§21 の consult boundary 実装（handoff 検証・状態解釈・重大度順位）は router の外で decision を積まない（observation-only）ため、この集計には現れない。
 
 **決定:** §15 の次回レビュー条件 (a) unpinned 実 session で decision が積まれる、(b) gated（suggested very-hard）が実測される、の**いずれも未発生**。§11 の Jev 非決定性と §12 の keyword hard gate の独立補完の分析は不変で、**前進の根拠なし → stage 2（`enabledRoutes: ["light", "hard"]`）を維持**。次回レビュー契機も §15 と同じ (a)/(b)。出典: 上記ローカル実測（§15 の再現コマンド・確認日 2026-09-20）。**限界:** §15 と同一——pin 継続により auto 経路が再発火しない間はデータが増えず、意図的に unpinned で作業しない限り判断には時間がかかる。
+
+## §23. opencode × herdr integration 導入（Opencode v2.0.9 / herdr 0.9.1）（2026-09-20）
+
+**目的:** dmmulroy/.dotfiles の opencode × herdr 活用を参考に、opencode を herdr の pane 内エージェントとして導入する。herdr の integrations では opencode は Pi/OMP/Kimi/Kilo/MastraCode と同じ **lifecycle authority** 型で、plugin イベントが `idle`/`working`/`blocked` を author し、session id 報告により `opencode --session <id>` で pane 復元できる（herdr docs Integrations）。この環境（opencode v2.0.9 = V2、herdr は Homebrew 経由）への適用手順と、V2 登録に必要なバージョン条件を確認した。**結論: 導入完了（opencode plugin list での読込確認まで）。**
+
+**再現コマンド（確認日 2026-09-20）:**
+- `herdr integration install opencode` → 書き出しは 3 点: `~/.config/opencode/plugins/herdr-agent-state.js`（server entrypoint）、`~/.config/opencode/herdr-tui-session.js`（shared TUI plugin）、`~/.config/opencode/herdr-opencode/tui.js`（V2 TUI entrypoint。中身は `export { default } from "../herdr-tui-session.js"`）
+- 登録先は V1 が `tui.jsonc` の `"plugin"`、V2 が `cli.json` の `"plugins": ["./herdr-opencode"]` の**両方**。実機の cli.json: `{"$schema":"https://opencode.ai/v2/cli.json","session":{"sidebar":"hide"},"plugins":["./herdr-opencode"]}`
+- 検証: `opencode plugin list` → `herdr.opencode`（server）と `herdr-opencode`（TUI）が local plugin として読み込み済み。`herdr integration status` → `opencode: current (v12)`
+- 出典: herdr v0.9.1 ソース `<https://github.com/herdrdev/herdr/blob/v0.9.1/src/integration/opencode_config.rs>`（`add_cli_plugin` が cli.json の `plugins` 配列へ追記。V1 の `tui.json`/`kv.json` が残る間は cli.json 生成を defer する `cli_migration_pending` を持つ）。opencode V2 docs Plugins（`~/.config/opencode/plugins/` の自動発見・TUI 系 plugin は cli.json `<https://opencode.ai/v2/docs/plugins>`）。herdr docs Integrations `<https://herdr.dev/docs/integrations/>`（確認日 2026-09-20）
+
+**バージョン依存（罠）:** herdr **0.9.0 は V1 登録（tui.jsonc）のみで `cli.json`・`herdr-opencode/tui.js` を書かない**。opencode V2 バイナリには文字列 `tui.jsonc` の参照が無い（`strings` で確認）ため、**V2 で TUI plugin を効かせるには herdr ≥ 0.9.1 が必要**。この環境は `brew upgrade herdr`（0.9.0 → 0.9.1、Homebrew stable）後に install し直して v12 を得た。upgrade の副作用で Pi integration が v8→v9 に古くなっていたため `herdr integration install pi`（v9）も更新した（doctor の WARN 解消）。参考の dmmulroy/.dotfiles は V1 形式（tui.jsonc）で登録しており、V2 運用へは彼の設定のままでは不足する。
+
+**限界:** サーバー plugin（`herdr.opencode`）と TUI plugin（`herdr-opencode`）の読込は確認済みだが、**pane 実起動での状態遷移（`herdr agent list` で working/blocked/idle）と復元の実測は未実施**。HERDR_ENV=1 の herdr 内操作のため、herdr 内で `opencode` を起動して確認する（このレビューは herdr 外のため遵守）。V2 Mini/headless クライアントは TUI plugin を動かさず lifecycle 報告なし。また plugin ファイルは herdr が上書きする管理ファイルなので、repo にはチェックインせず再現コマンドのみ記録する方針。
