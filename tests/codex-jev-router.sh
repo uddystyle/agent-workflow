@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Codex/Jev router が明示 override と Jev 経路（fetch スタブ）で route を適用し、decision を session に残す。
 # Jev 経路では適用成功時も judgment（confidence・token usage）が decision に残ることまで検証する。
-# さらに TaskClassifier 境界（createJevClassifier）、/route report の集計・走査、
-# project-local config（opt-out / enabled override / route 上書き）を検証する。
+# さらに TaskClassifier 境界（createJevClassifier）、BudgetManager / GenerationFallback 境界、
+# /route report の集計・走査、project-local config（opt-out / enabled override / route 上書き）を検証する。
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -267,6 +267,33 @@ assert.ok(afterTurn.jevCalls >= 1, `Jev decision が quota に蓄積される（
 await command.handler("status", ctx);
 assert.ok(notifications.some((n) => n.message.startsWith("Codex router:") && n.message.includes("quota")), "status に quota 行");
 rmSync(quotaPath, { force: true });
+
+// BudgetManager 境界: createLocalBudgetManager が永続化・窓ローテーション・mode リセットを隠す。
+const managerPath = join(tmpdir(), "router-budget-manager-test.json");
+rmSync(managerPath, { force: true });
+const budgetManager = extension.createLocalBudgetManager({ mode: "estimated", windowHours: 168, softLimitTokens: 0 }, managerPath);
+assert.equal(budgetManager.mode, "estimated");
+budgetManager.recordGeneration({ input: 5000, output: 300, cacheRead: 1000 });
+budgetManager.recordGeneration({ input: 2500, output: 150 });
+budgetManager.recordJev(273, 20);
+assert.ok(budgetManager.line().includes("quota estimated (non-authoritative local estimate)"), "line() がローカル計測を明示");
+const managerState = JSON.parse(readFileSync(managerPath, "utf8"));
+assert.equal(managerState.reportedTurns, 2);
+assert.equal(managerState.reportedInputTokens, 7500);
+assert.equal(managerState.reportedOutputTokens, 450);
+assert.equal(managerState.reportedCacheReadTokens, 1000);
+assert.equal(managerState.jevCalls, 1);
+assert.equal(managerState.jevInputTokens, 273);
+rmSync(managerPath, { force: true });
+
+// GenerationFallback 境界: 一次 registry 優先・fallback は一次不在時のみ・MVP は fallback 無登録。
+const reg = { find: (provider, model) => models.get(`${provider}/${model}`) };
+const lightRoute = { provider: "openai-codex", model: "gpt-5.6-sol", thinkingLevel: "low" };
+const lunaRoute = { provider: "openai-codex", model: "gpt-5.6-luna", thinkingLevel: "low" };
+assert.deepEqual(await extension.resolveRouteCandidate(reg, lightRoute, undefined), { provider: "openai-codex", id: "gpt-5.6-sol" }, "一次 registry が勝つ");
+assert.deepEqual(await extension.resolveRouteCandidate(reg, lunaRoute, { resolve: async () => ({ provider: "openai-codex", id: "gpt-5.6-terra" }) }), { provider: "openai-codex", id: "gpt-5.6-terra" }, "fallback が一次不在を補う");
+assert.equal(await extension.resolveRouteCandidate(reg, lunaRoute, undefined), undefined, "MVP は fallback 無しで undefined");
+assert.equal(await extension.resolveRouteCandidate(reg, lunaRoute, { resolve: async () => undefined }), undefined, "fallback が undefined なら undefined");
 
 // Project-local opt-out: .codex-jev-router.json の {enabled:false}（v1/v2）で自動ルーティングを止める。
 assert.equal(extension.parseProjectOptOut({ version: 1, enabled: false }), true);

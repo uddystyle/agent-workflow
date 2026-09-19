@@ -90,6 +90,24 @@ export interface TaskClassifier {
   classify(input: RedactedTaskSynopsis, signal?: AbortSignal): Promise<JevRouteJudgment>;
 }
 
+/**
+ * Future boundary: a separately authenticated generation provider fallback
+ * (architecture §Failure behavior). It stays disabled and unconfigured in the
+ * MVP — no config field or environment enables it yet — so routing semantics
+ * are unchanged until a future implementation is wired into applyRoute.
+ * `TModel` is the registry's model type (what pi.setModel accepts), so a
+ * fallback candidate can be passed to setModel unchanged.
+ */
+export interface GenerationFallback<TModel> {
+  /** Resolves a fallback candidate for a route whose primary provider model is unavailable; undefined means no fallback applies. */
+  resolve(route: ModelRoute): Promise<TModel | undefined>;
+}
+
+/** Resolves the effective candidate for a route: primary registry lookup first, then the inert fallback boundary, else undefined. */
+export async function resolveRouteCandidate<TModel>(registry: { find(provider: string, model: string): TModel | undefined }, route: ModelRoute, fallback: GenerationFallback<TModel> | undefined): Promise<TModel | undefined> {
+  return registry.find(route.provider, route.model) ?? (fallback ? await fallback.resolve(route) : undefined);
+}
+
 type RouterSelection = {
   routeId: CodexRouteId;
   source: RouteSource;
@@ -463,6 +481,44 @@ export function formatQuotaLine(quota: QuotaState | undefined): string {
   return `quota ${quota.mode} (non-authoritative local estimate) ${quota.windowStart}→${quota.windowEnd} · ${quota.reportedTurns} turns · ${quota.reportedInputTokens} in / ${quota.reportedOutputTokens} out · cache ${quota.reportedCacheReadTokens} · Jev ${quota.jevCalls} calls${softLimit}`;
 }
 
+/**
+ * Policy-agnostic budget boundary: routing reads and records quota through this
+ * interface, not through the persistence format. A future authoritative budget
+ * source can implement the same members without changing routing semantics.
+ * Counts and lines here are local estimates, never authoritative.
+ */
+export interface BudgetManager {
+  readonly mode: BudgetMode;
+  /** Records one assistant generation turn's provider-reported usage. */
+  recordGeneration(usage: { input: number; output: number; cacheRead?: number }): void;
+  /** Records one Jev classifier call into the same window. */
+  recordJev(inputTokens?: number, outputTokens?: number): void;
+  /** Returns the current window's display line for /route status. */
+  line(): string;
+}
+
+/** Local file-backed BudgetManager: persists a quota state file, rotates windows, and resets on mode change. */
+export function createLocalBudgetManager(budget: RouterConfig["budget"], statePath: string): BudgetManager {
+  const stored = readQuotaState(statePath);
+  let state: QuotaState = stored && stored.mode === budget.mode
+    ? rotateQuotaState({ ...stored, softLimitTokens: budget.softLimitTokens }, budget.windowHours)
+    : createQuotaState(budget.mode, budget.windowHours, budget.softLimitTokens);
+  return {
+    mode: budget.mode,
+    recordGeneration(usage) {
+      state = rotateQuotaState(recordGenerationUsage(state, usage), budget.windowHours);
+      writeQuotaState(statePath, state);
+    },
+    recordJev(inputTokens, outputTokens) {
+      state = rotateQuotaState(recordJevUsage(state, inputTokens, outputTokens), budget.windowHours);
+      writeQuotaState(statePath, state);
+    },
+    line() {
+      return formatQuotaLine(state);
+    },
+  };
+}
+
 function isQuotaState(value: unknown): value is QuotaState {
   return isRecord(value) && value.version === 1 && isBudgetMode(value.mode)
     && typeof value.windowStart === "string" && typeof value.windowEnd === "string"
@@ -514,18 +570,15 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   let config: RouterConfig | undefined; // effective for the current session (global + project overrides)
   let configError: string | undefined;
   let classifier: TaskClassifier | undefined;
+  let budgetManager: BudgetManager | undefined;
+  let fallback: GenerationFallback<any> | undefined; // MVP: stays undefined; typed loosely so a future concrete model type can plug in (architecture §Failure behavior).
   let state: RouterSessionState = { applyingRoute: false, manualSelection: false, optedOut: false, projectOverrides: false };
-  let quota: QuotaState | undefined;
 
   try {
     globalConfig = parseCodexRouterConfig(JSON.parse(readFileSync(ROUTER_CONFIG_PATH, "utf8")));
     config = globalConfig;
     classifier = createJevClassifier(globalConfig.jev.model, globalConfig.jev.timeoutMs);
-    const stored = readQuotaState(quotaStatePath());
-    const windowHours = globalConfig.budget.windowHours;
-    quota = stored && stored.mode === globalConfig.budget.mode
-      ? rotateQuotaState({ ...stored, softLimitTokens: globalConfig.budget.softLimitTokens }, windowHours)
-      : createQuotaState(globalConfig.budget.mode, windowHours, globalConfig.budget.softLimitTokens);
+    budgetManager = createLocalBudgetManager(globalConfig.budget, quotaStatePath());
   } catch (error) {
     configError = errorMessage(error);
   }
@@ -550,9 +603,8 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     };
     pi.appendEntry(ROUTER_DECISION_ENTRY, decision);
     state.lastDecision = decision;
-    if (quota && selection.judgment) {
-      quota = rotateQuotaState(recordJevUsage(quota, selection.judgment.inputTokens, selection.judgment.outputTokens), config?.budget.windowHours ?? 168);
-      writeQuotaState(quotaStatePath(), quota);
+    if (budgetManager && selection.judgment) {
+      budgetManager.recordJev(selection.judgment.inputTokens, selection.judgment.outputTokens);
     }
     ctx.ui.setStatus("codex-jev-router", `Route: ${decision.routeId} (${decision.source})`);
     return decision;
@@ -561,7 +613,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   async function applyRoute(routeId: CodexRouteId, source: RouteSource, reason: string, ctx: ExtensionContext, prompt = "", judgment?: JevRouteJudgment, rollout?: RouterSelection["rollout"]): Promise<boolean> {
     if (!config) return false;
     const route = config.routes[routeId];
-    const candidate = ctx.modelRegistry.find(route.provider, route.model);
+    const candidate = await resolveRouteCandidate(ctx.modelRegistry, route, fallback);
     if (!candidate) return false;
     state.applyingRoute = true;
     try {
@@ -622,12 +674,11 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
 
   // Local non-authoritative quota tracking: every assistant turn's provider-reported usage.
   pi.on("turn_end", (event, _ctx) => {
-    if (!quota) return;
+    if (!budgetManager) return;
     const rawUsage = (event.message as { usage?: unknown }).usage;
     const usage = isRecord(rawUsage) ? rawUsage : undefined;
     if (!usage || typeof usage.input !== "number" || typeof usage.output !== "number") return;
-    quota = rotateQuotaState(recordGenerationUsage(quota, { input: usage.input, output: usage.output, cacheRead: typeof usage.cacheRead === "number" ? usage.cacheRead : 0 }), config?.budget.windowHours ?? 168);
-    writeQuotaState(quotaStatePath(), quota);
+    budgetManager.recordGeneration({ input: usage.input, output: usage.output, cacheRead: typeof usage.cacheRead === "number" ? usage.cacheRead : 0 });
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
@@ -667,7 +718,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
         const pin = state.pin ? `${state.pin.source} ${state.pin.provider}/${state.pin.model}:${state.pin.thinkingLevel}` : "none";
         const optOut = state.optedOut ? " · project opt-out" : config ? !config.enabled ? " · routing disabled (config)" : "" : "";
         const project = state.projectOverrides ? " · project overrides" : "";
-        ctx.ui.notify(`Codex router: ${configError ? `disabled (${configError})` : "ready"}; current ${current}; pin ${pin}; ${formatQuotaLine(quota)}${optOut}${project}.`, configError ? "warning" : "info");
+        ctx.ui.notify(`Codex router: ${configError ? `disabled (${configError})` : "ready"}; current ${current}; pin ${pin}; ${budgetManager ? budgetManager.line() : "quota unknown"}${optOut}${project}.`, configError ? "warning" : "info");
         return;
       }
       if (command === "auto" || command === "reset") {

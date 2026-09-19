@@ -285,3 +285,24 @@ bash tests/codex-jev-router.sh      # 全スイートでの実行は `for test i
 型チェック（一時 tsconfig: module esnext / moduleResolution bundler / strict / skipLibCheck / typeRoots=Pi pkg の node_modules/@types / paths=`@earendil-works/pi-coding-agent`→Pi dist/index.d.ts）PASS。全テストスイート PASS（確認日 2026-09-19）。
 
 **限界:** 現 deploy は global `enabled: true` なので project `enabled: true` は実効 no-op（global off にした時に意味を持つ）。opt-out ファイル内の route 上書きは無視される（opt-out と共存しない）。project config は git 管理対象になり得る trust-sensitive な設定で、repo 所有者なら誰でも route 割当を変えられる（§14 と同じ前提）。出典: 上記ローカル型定義＋ `tests/codex-jev-router.sh` のローカル実測（確認日 2026-09-19）。
+
+## §17. BudgetManager / GenerationFallback の interface 化（2026-09-19）
+
+**目的:** implementation-plan・architecture.md 乖離の最後の残件「`BudgetManager` interface 化・`GenerationFallback` は提案のまま」を実装する。quota の読み書きを router 本体から切り離して policy-agnostic な境界にし、将来の authoritative budget source や API-key provider fallback が routing 意味論を変えずに挿せるようにする。
+
+**設計決定:**
+- **`BudgetManager` interface**: `readonly mode`（`unknown`/`manual`/`estimated`）、`recordGeneration(usage: {input, output, cacheRead?})`、`recordJev(inputTokens?, outputTokens?)`、`line()`（`/route status` 用の非 authoritative 表示）。router は直接の QuotaState 関数・persistence ファイル形式に触れず、この interface 越しにのみ触る。
+- **`createLocalBudgetManager(budget, statePath)`**: ローカル実装。quota ファイルの `readQuotaState`/`rotateQuotaState`/`createQuotaState`、record ごとの窓ローテーション + `writeQuotaState`、mode 変更でのリセット、`line()` は `formatQuotaLine` を担う。既存の純粋関数（`createQuotaState` 等）は export のまま維持（既存テスト互換）。
+- **`GenerationFallback<TModel>` interface**: API-key provider fallback の将来境界。`resolve(route)` が一次 provider/model 不在時に候補を返す。**MVP は登録経路（config field / env）が無く、module-level `fallback` は恒に undefined**。
+- **`resolveRouteCandidate(registry, route, fallback)`**: registry 優先・fallback は一次不在時のみ・いずれも無ければ `undefined`（fail-open）。`applyRoute` はこの seam 経由に変更。
+- **型の根拠（ジェネリックにした理由）:** `pi.setModel(model: Model<any>)` は registry の**完全な `Model` 型**（name/api/baseUrl/reasoning ほか）を受け取る。当初 `{provider, id}` の具象型に潰すと setModel に渡せず型チェック FAIL したため、`TModel` は registry.find の戻り型を通す（`Model<Api>`）。
+
+**検証:** `tests/codex-jev-router.sh` に追加——`createLocalBudgetManager`（`mode` アサート・2 turn の `recordGeneration` + 1 回の `recordJev` が永続化ファイルに積まれる・`line()` が `quota estimated (non-authoritative local estimate)` を明示）、`resolveRouteCandidate`（registry 優先・fallback が一次不在を補う・fallback 無し MVP は undefined・fallback が undefined を返す場合）。再現コマンド:
+
+```sh
+bash tests/codex-jev-router.sh      # 全スイートでの実行は `for test in tests/*.sh; do bash "$test" || exit; done`
+```
+
+型チェック（一時 tsconfig: module esnext / moduleResolution bundler / strict / skipLibCheck / typeRoots=Pi pkg の node_modules/@types / paths=`@earendil-works/pi-coding-agent`→Pi dist/index.d.ts）PASS。全テストスイート PASS（確認日 2026-09-19）。
+
+**限界:** GenerationFallback は seam のみで MVP に実効なし（登録経路なし・routing 意味論不変）。`authoritative` state・nudge-down・API-key OpenAI fallback の有効化は引き続き未実装。module-level の `fallback` 変数は `GenerationFallback<any>`（未来の具象 model 型が挿せるための緩い型、MVP では恒に undefined）。出典: ローカル Pi 型定義（`$(npm root -g)/@earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts:1006` `setModel(model: Model<any>)`・`dist/core/model-registry.d.ts:28` `find(): Model<Api> | undefined`、確認日 2026-09-19）＋ `tests/codex-jev-router.sh` のローカル実測。

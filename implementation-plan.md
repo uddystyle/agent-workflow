@@ -11,9 +11,9 @@ prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559
 - Milestone 2（Jev adapter）: ✅ 直接 TypeSafe System One API・`TYPESAFE_API_KEY`・bounded synopsis（2,000 bytes）・strict timeout（5,000ms）・no retry・schema 検証・fail-open・`TaskClassifier` interface 抽出（`createJevClassifier(model, timeoutMs)` が Jev を transport として実装）。
 - Milestone 3（observability）: ✅ decision / pin entry は実装済み（version・at・routeId・source・reason・model/thinking・jev confidence/tokens/elapsedMs・task hash/bytes）。offline report command を `/route report` として実装（session ディレクトリ走査→route/source 別集計・fallback rate・Jev 集計を notify）。quota state の永続化も実装済み（budget `manual`/`estimated`、`~/.pi/agent/codex-jev-router-quota.json`、routing-policy §Budget policy・research.md §13）。
 - Milestone 4（calibration / guarded rollout）: 🔶 confidence 校准は実施済み（`jev-calibration.sh`/`.ts` が observation harness、ラベル付き16タスク実測・threshold sweep で `minimumConfidence` を 0.65 → 0.70 に調整。詳細は research.md §11）。guarded rollout は **stage 2 適用中**（`rollout.enabledRoutes: ["light", "hard"]`。stage 1→2 は誤ルーティング定期レビューのライブ実測で判断、詳細は research.md §12）。very-hard 提案は gated で decision に `rolloutGate`/`suggestedRouteId` を残し `/route report` の gated 集計で観測。残るは very-hard 有効化の判断材料になる実 session 蓄積の定期レビューだけ（2026-09-19 追跡レビュー: 積み増し 0 で stage 2 維持、research.md §15）。
-- 将来境界（BudgetManager の interface 化 / GenerationFallback）: Budget state と project-local config（opt-out / enabled override / route 上書き）は実装済み（下記）。`BudgetManager` interface・`GenerationFallback` は未実装（architecture.md の乖離欄と同一）。
+- 将来境界（BudgetManager の interface 化 / GenerationFallback）: Budget state、project-local config（opt-out / enabled override / route 上書き）、`BudgetManager` interface（`createLocalBudgetManager`）、`GenerationFallback` interface（`resolveRouteCandidate`・MVP 未設定無効）は実装済み（下記・research.md §17）。
 
-未実装のまま残る点: M4 の very-hard 有効化判断（実 session 蓄積レビュー）、BudgetManager/GenerationFallback の interface 化。observation は `jev-calibration.sh`（§11）、hard gate は設定データ化（`hardGate.patterns`）、guarded rollout は stage 2（`rollout.enabledRoutes: ["light", "hard"]`）適用済み（§12）、budget `manual`/`estimated` と quota state の永続化は実装済み（routing-policy §Budget policy・research.md §13）、project-local config は実装済み（routing-policy §Project-local config・research.md §14・§16）——v1 opt-out に加え、v2 の `enabled` override（global optional master switch を project 単位で上書き）と `routes`/`fallbackRoute` の route 上書き。
+未実装のまま残る点: M4 の very-hard 有効化判断（実 session 蓄積レビュー）。observation は `jev-calibration.sh`（§11）、hard gate は設定データ化（`hardGate.patterns`）、guarded rollout は stage 2（`rollout.enabledRoutes: ["light", "hard"]`）適用済み（§12）、budget `manual`/`estimated` と quota state の永続化は実装済み（routing-policy §Budget policy・research.md §13）、project-local config は実装済み（routing-policy §Project-local config・research.md §14・§16）——v1 opt-out に加え、v2 の `enabled` override（global optional master switch を project 単位で上書き）と `routes`/`fallbackRoute` の route 上書き。`BudgetManager` / `GenerationFallback` の interface 化は実装済み（routing-policy §Budget policy・research.md §17）——quota は `BudgetManager` 境界経由、`GenerationFallback` は `resolveRouteCandidate(registry, route, fallback)` の seam のみで MVP は未設定無効。
 
 ## Scope
 
@@ -110,18 +110,20 @@ Success metrics:
 
 ## Future boundary — Budget Manager and API fallback
 
-Reserve interfaces only:
+Reserve interfaces only（prototype では次の実形に進んだ）:
 
 ```ts
 interface BudgetManager {
-  getState(): BudgetState // unknown | manual | estimated | authoritative
+  readonly mode: BudgetMode; // unknown | manual | estimated
+  recordGeneration(usage: { input: number; output: number; cacheRead?: number }): void;
+  recordJev(inputTokens?: number, outputTokens?: number): void;
+  line(): string; // non-authoritative local estimate
 }
-interface GenerationFallback {
-  isAvailable(): boolean
-  // no implementation in MVP
+interface GenerationFallback<TModel> {
+  resolve(route: ModelRoute): Promise<TModel | undefined>; // primary unavailable 時のみ
 }
 ```
 
-**Implemented（2026-09-19、Budget state 部分）:** `unknown`/`manual`/`estimated` の状態と永続化は config `budget` + `~/.pi/agent/codex-jev-router-quota.json` として実装済み（routing-policy §Budget policy・research.md §13）。`BudgetManager` interface の抽出・`authoritative` 状態・nudge-down・`GenerationFallback` は未実装のまま。
+**Implemented（2026-09-19）:** quota の読み書きは `BudgetManager` 境界に切り出した——`createLocalBudgetManager(budget, statePath)` が quota ファイルの永続化・`windowHours` ローテーション・mode 変更リセットを隠し、router（`default`/`recordDecision`/`turn_end`/`/route status`）は interface 越しにしか触らない（計測は常時・mode は表示ラベルのみ）。`GenerationFallback` は `resolveRouteCandidate(registry, route, fallback)` の seam として定義し、**MVP は未設定・無効**（登録経路の config/env なし、routing 意味論は不変）。`authoritative` 状態（subscription quota の公式値）と `auto` 提案の nudge-down、および API-key OpenAI fallback の有効化は未実装のまま（詳細は research.md §17）。
 
 An API-key OpenAI fallback, if later desired, requires separate user approval, credentials, explicit spend caps, and clear UX showing that it is billed independently from ChatGPT/Codex subscription usage.

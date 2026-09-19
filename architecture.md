@@ -1,6 +1,6 @@
 # Pi / Codex Token Management with Jev — architecture proposal
 
-確認日: 2026-09-18 / 2026-09-19。事実根拠は [research.md](research.md)（§10 に実セッション実測、§13 に quota 実装、§14 に opt-out、§16 に project-local override 層）。本書で設計した router の prototype（`codex-jev-router.ts` / `codex-jev-router.json`）は実装・展開済みで、実測を含む。commit `3a873c1`（Jev model pin）、`c5ca162`（judgment 永続化）、`4f559ed`（実測記録）。将来境界のうち Budget state（`manual`/`estimated` と quota 永続化）と project-local config（opt-out / enabled override / route 上書き）は実装済み。`BudgetManager` interface 化・`GenerationFallback` は提案のまま。
+確認日: 2026-09-18 / 2026-09-19。事実根拠は [research.md](research.md)（§10 に実セッション実測、§13 に quota 実装、§14 に opt-out、§16 に project-local override 層、§17 に BudgetManager/GenerationFallback の interface 化）。本書で設計した router の prototype（`codex-jev-router.ts` / `codex-jev-router.json`）は実装・展開済みで、実測を含む。commit `3a873c1`（Jev model pin）、`c5ca162`（judgment 永続化）、`4f559ed`（実測記録）。将来境界のうち Budget state（`manual`/`estimated` と quota 永続化）、project-local config（opt-out / enabled override / route 上書き）、`BudgetManager` / `GenerationFallback` の interface 化は実装済み。
 
 ## 結論
 
@@ -74,7 +74,7 @@ A successful route selection is pinned as a custom session entry. It survives `/
 - invalid router configuration: disable routing for that session; retain ordinary Pi behavior.
 - extension error: rely on Pi's extension error isolation; do not override provider payloads or intercept normal tool calls.
 
-No automatic OpenAI API fallback is part of this phase. A future `GenerationFallback` interface may expose a separately authenticated provider, but it must be disabled and unconfigured in the MVP.
+No automatic OpenAI API fallback is part of this phase. A `GenerationFallback` interface is defined but inert: it may expose a separately authenticated provider in the future, and it must stay disabled and unconfigured in the MVP — no config field or environment enables it yet. A future implementation plugs into `resolveRouteCandidate(registry, route, fallback)`（registry 優先・absent 時のみ fallback・いずれも無ければ undefined）without changing routing semantics.
 
 ## Observability boundary
 
@@ -89,13 +89,13 @@ The ledger distinguishes:
 
 ## 実装済み範囲と乖離（2026-09-19）
 
-構成図の流れは prototype で実装済み: one-shot / session override（`/route once|pin`）、session-start の pin 復元、keyword hard gate（→ `hard`）、bounded redacted synopsis（2,000 bytes・sha256・原文非保存）、Jev Choice 分類（1 request・strict timeout・no retry・`TYPESAFE_API_KEY`）を `TaskClassifier` 境界（`createJevClassifier`）経由で実施、confidence 閾値、`setModel()` + `setThinkingLevel()` の検証付き適用、pin/decision の custom entry 永続化、`/route report`（session ディレクトリ走査の decision 集計）、`rollout.enabledRoutes` による段階展開（auto 提案のみ gate・decision に `rolloutGate`/`suggestedRouteId` 記録・report で gated 集計、NORMAL は暗黙に有効、hard-gate/one-shot/pin/manual は対象外）、budget state（`unknown`/`manual`/`estimated`）の quota 永続化（`turn_end` の generation usage + decision の Jev usage を窓ごとに `~/.pi/agent/codex-jev-router-quota.json` へ、`budget.windowHours` で自動ローテーション）、project-local config（`<cwd>/.codex-jev-router.json` の v1 opt-out・v2 `enabled` override / `routes` / `fallbackRoute` 上書き、global の optional `enabled` master switch）、fail-open fallback。実測は research.md §10、quota 実装は §13、opt-out は §14、project-local override 層は §16。
+構成図の流れは prototype で実装済み: one-shot / session override（`/route once|pin`）、session-start の pin 復元、keyword hard gate（→ `hard`）、bounded redacted synopsis（2,000 bytes・sha256・原文非保存）、Jev Choice 分類（1 request・strict timeout・no retry・`TYPESAFE_API_KEY`）を `TaskClassifier` 境界（`createJevClassifier`）経由で実施、confidence 閾値、`setModel()` + `setThinkingLevel()` の検証付き適用、pin/decision の custom entry 永続化、`/route report`（session ディレクトリ走査の decision 集計）、`rollout.enabledRoutes` による段階展開（auto 提案のみ gate・decision に `rolloutGate`/`suggestedRouteId` 記録・report で gated 集計、NORMAL は暗黙に有効、hard-gate/one-shot/pin/manual は対象外）、budget state（`unknown`/`manual`/`estimated`）の quota 永続化（`turn_end` の generation usage + decision の Jev usage を窓ごとに `~/.pi/agent/codex-jev-router-quota.json` へ、`budget.windowHours` で自動ローテーション）、`BudgetManager` 境界（`recordGeneration`/`recordJev`/`line`/`mode` で quota 永続化形式を隠蔽し、`createLocalBudgetManager` が永続化・窓ローテーション・mode リセットを担う。将来の authoritative budget source は同一 interface で実装可能）、`GenerationFallback` 境界（`resolveRouteCandidate` は registry 優先・fail-open、MVP では未設定・無効）、project-local config（`<cwd>/.codex-jev-router.json` の v1 opt-out・v2 `enabled` override / `routes` / `fallbackRoute` 上書き、global の optional `enabled` master switch）、fail-open fallback。実測は research.md §10、quota 実装は §13、opt-out は §14、project-local override 層は §16、interface 化は §17。
 
 提案からの乖離:
 
 - hard gate は keyword 判定（config `hardGate.patterns` の単語を word-boundary・case-insensitive で照合）で `hard` にのみ上げる（`very-hard` への切替や追加 confirmation はしない）。パターンは設定データ化済みで、調整は `codex-jev-router.json` の変更になる。
 - Jev は Choice のみ。提案の optional Nouls（`security_sensitive` / `migration` / `ambiguous_requirements`）は未実装で、security/migration は keyword gate で拾う。
-- budget state の実装は config `budget` + quota 永続化ファイルへ進めた。`auto` 提案への nudge-down は行わず、計測値は `non-authoritative local estimate` と明示する（`/route status`）。`authoritative` 状態（subscription quota の公式値）は公開 API が未確認のため存在しない。
+- budget state の実装は config `budget` + quota 永続化ファイルへ進めた。quota の読み書きは `BudgetManager` 境界（`createLocalBudgetManager`、`recordGeneration`/`recordJev`/`line`/`mode`）を経由し、将来の authoritative budget source は同一 interface で実装できる。`auto` 提案への nudge-down は行わず、計測値は `non-authoritative local estimate` と明示する（`/route status`）。`authoritative` 状態（subscription quota の公式値）は公開 API が未確認のため存在しない。
 - 観測は custom entry（decision / pin）と quota 状態ファイルに分散している。`/route explain` は最新 decision の reason、`/route report` は decision の route/source 別集計・fallback rate・Jev 集計を notify で返す。
 - config は global（`~/.pi/agent/codex-jev-router.json`、repo への symlink）を基本とし、project-local config（`<cwd>/.codex-jev-router.json`）で上書きできる。v2 の `enabled` は global の optional master switch を project 単位で上書き（`false`＝opt-out、`true`＝global off でも有効化）、`routes`/`fallbackRoute` は route 割当を部分上書きする（opt-out 時は上書き無視）。project は route 割当・fallback・有効化だけを上書きでき、`jev`/`budget`/`hardGate`/`rollout` は global のみ。
 - route の capability 検証は session_start の eager でなく、apply 時に `ctx.modelRegistry.find()` で行う。
