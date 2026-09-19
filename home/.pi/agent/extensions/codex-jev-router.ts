@@ -103,6 +103,7 @@ type RouterSessionState = {
   lastDecision?: RouteDecision;
   applyingRoute: boolean;
   manualSelection: boolean;
+  optedOut: boolean;
 };
 
 const routeIds: readonly CodexRouteId[] = ["light", "normal", "hard", "very-hard"];
@@ -293,6 +294,26 @@ export function quotaStatePath(): string {
   return process.env.CODEX_JEV_ROUTER_QUOTA_PATH ?? join(homedir(), ".pi", "agent", "codex-jev-router-quota.json");
 }
 
+/** Project-local opt-out marker file, read from the session's working directory. */
+export function projectOptOutPath(cwd: string): string {
+  return join(cwd, ".codex-jev-router.json");
+}
+
+/** Pure policy check: only an explicit versioned `enabled: false` opts a project out. */
+export function parseProjectOptOut(value: unknown): boolean {
+  return isRecord(value) && value.version === 1 && value.enabled === false;
+}
+
+/** Reads and validates the project opt-out marker; missing, malformed, or non-matching shapes mean active (default). */
+export function readProjectOptOut(cwd: string): boolean {
+  if (!cwd) return false;
+  try {
+    return parseProjectOptOut(JSON.parse(readFileSync(projectOptOutPath(cwd), "utf8")));
+  } catch {
+    return false;
+  }
+}
+
 /** Starts a fresh quota window. */
 export function createQuotaState(mode: BudgetMode, windowHours: number, softLimitTokens: number, now = Date.now()): QuotaState {
   return {
@@ -414,7 +435,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   let config: RouterConfig | undefined;
   let configError: string | undefined;
   let classifier: TaskClassifier | undefined;
-  let state: RouterSessionState = { applyingRoute: false, manualSelection: false };
+  let state: RouterSessionState = { applyingRoute: false, manualSelection: false, optedOut: false };
   let quota: QuotaState | undefined;
 
   try {
@@ -479,11 +500,12 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   }
 
   pi.on("session_start", (_event, ctx) => {
-    state = { applyingRoute: false, manualSelection: false };
+    state = { applyingRoute: false, manualSelection: false, optedOut: false };
     if (!config) {
       ctx.ui.setStatus("codex-jev-router", "Route: unavailable (invalid configuration)");
       return;
     }
+    state.optedOut = readProjectOptOut(ctx.cwd);
     const sessionId = ctx.sessionManager.getSessionId();
     for (const entry of ctx.sessionManager.getBranch()) {
       if (entry.type !== "custom" || entry.customType !== ROUTER_PIN_ENTRY || !isPersistedPin(entry.data) || entry.data.sessionId !== sessionId) continue;
@@ -533,6 +555,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       return;
     }
     if (state.pin) return;
+    if (state.optedOut) return;
     const hardGate = routeHardGate(event.prompt, config.hardGate.patterns);
     if (hardGate) {
       await applyRoute(hardGate, "hard-gate", "A deterministic safety gate required a higher-capability route.", ctx, event.prompt);
@@ -558,14 +581,15 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       if (command === "status") {
         const current = `${ctx.model?.provider ?? "unknown"}/${ctx.model?.id ?? "unknown"}:${pi.getThinkingLevel()}`;
         const pin = state.pin ? `${state.pin.source} ${state.pin.provider}/${state.pin.model}:${state.pin.thinkingLevel}` : "none";
-        ctx.ui.notify(`Codex router: ${configError ? `disabled (${configError})` : "ready"}; current ${current}; pin ${pin}; ${formatQuotaLine(quota)}.`, configError ? "warning" : "info");
+        const optOut = state.optedOut ? " · project opt-out" : "";
+        ctx.ui.notify(`Codex router: ${configError ? `disabled (${configError})` : "ready"}; current ${current}; pin ${pin}; ${formatQuotaLine(quota)}${optOut}.`, configError ? "warning" : "info");
         return;
       }
       if (command === "auto" || command === "reset") {
         state.pin = undefined;
         state.pendingRoute = undefined;
         state.manualSelection = false;
-        ctx.ui.setStatus("codex-jev-router", "Route: auto on the next task");
+        ctx.ui.setStatus("codex-jev-router", state.optedOut ? "Route: project opted out of auto routing" : "Route: auto on the next task");
         return;
       }
       if ((command === "pin" || command === "once") && isRouteId(routeText)) {

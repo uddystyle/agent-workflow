@@ -18,6 +18,7 @@ let thinking = "medium";
 let sessionDir;
 const entries = [];
 const notifications = [];
+const projectDir = mkdtempSync(join(tmpdir(), "router-project-"));
 const models = new Map([
   ["openai-codex/gpt-5.6-sol", { provider: "openai-codex", id: "gpt-5.6-sol" }],
   ["openai-codex/gpt-5.6-terra", { provider: "openai-codex", id: "gpt-5.6-terra" }],
@@ -25,6 +26,7 @@ const models = new Map([
 ]);
 const ctx = {
   model: models.get("openai-codex/gpt-5.6-terra"),
+  cwd: projectDir,
   modelRegistry: { find: (provider, model) => models.get(`${provider}/${model}`) },
   sessionManager: { getSessionId: () => "router-test-session", getBranch: () => entries, getSessionDir: () => sessionDir },
   ui: { setStatus() {}, notify(message, level) { notifications.push({ message, level }); } },
@@ -264,6 +266,45 @@ assert.ok(afterTurn.jevCalls >= 1, `Jev decision が quota に蓄積される（
 await command.handler("status", ctx);
 assert.ok(notifications.some((n) => n.message.startsWith("Codex router:") && n.message.includes("quota")), "status に quota 行");
 rmSync(quotaPath, { force: true });
+
+// Project-local opt-out: .codex-jev-router.json の {version:1, enabled:false} で自動ルーティングを止める。
+assert.equal(extension.parseProjectOptOut({ version: 1, enabled: false }), true);
+assert.equal(extension.parseProjectOptOut({ version: 1, enabled: true }), false);
+assert.equal(extension.parseProjectOptOut({ version: 2, enabled: false }), false);
+assert.equal(extension.parseProjectOptOut({}), false);
+assert.equal(extension.parseProjectOptOut("{not-json"), false);
+assert.equal(extension.projectOptOutPath("/tmp/project"), "/tmp/project/.codex-jev-router.json");
+const optOutDir = mkdtempSync(join(tmpdir(), "router-optout-"));
+try {
+  assert.equal(extension.readProjectOptOut(optOutDir), false);
+  writeFileSync(join(optOutDir, ".codex-jev-router.json"), JSON.stringify({ version: 1, enabled: false }));
+  assert.equal(extension.readProjectOptOut(optOutDir), true);
+  writeFileSync(join(optOutDir, ".codex-jev-router.json"), "broken");
+  assert.equal(extension.readProjectOptOut(optOutDir), false);
+  writeFileSync(join(optOutDir, ".codex-jev-router.json"), JSON.stringify({ version: 1, enabled: false }));
+  // opt-out プロジェクトで session 開始 → auto は hard-gate キーワードでも動かず、Jev も呼ばれない。
+  ctx.cwd = optOutDir;
+  await handlers.get("session_start")({}, ctx);
+  await command.handler("auto", ctx);
+  const modelBefore = ctx.model.id;
+  globalThis.fetch = async () => { throw new Error("Jev must not be called in an opted-out project"); };
+  const decisionsBefore = entries.filter((entry) => entry.customType === "codex-jev-router-decision").length;
+  await handlers.get("before_agent_start")({ prompt: "Plan the schema migration across services." }, ctx);
+  assert.equal(ctx.model.id, modelBefore);
+  assert.equal(entries.filter((entry) => entry.customType === "codex-jev-router-decision").length, decisionsBefore, "opt-out では decision が増えない");
+  // 明示 one-shot は opt-out 下でも効く。
+  await command.handler("once light", ctx);
+  await handlers.get("before_agent_start")({ prompt: "Format the README heading." }, ctx);
+  assert.equal(ctx.model.id, "gpt-5.6-sol");
+  assert.equal(thinking, "low");
+  // /route status に project opt-out が出る。
+  await command.handler("status", ctx);
+  assert.ok(notifications.some((n) => n.message.startsWith("Codex router:") && n.message.includes("project opt-out")), "status に project opt-out");
+} finally {
+  ctx.cwd = projectDir;
+  rmSync(optOutDir, { recursive: true, force: true });
+}
+rmSync(projectDir, { recursive: true, force: true });
 NODE
 
 printf 'PASS codex Jev router TaskClassifier report\n'
