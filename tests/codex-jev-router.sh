@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Codex/Jev router が明示 override を外部通信なしで適用し、decisionを session に残す。
+set -euo pipefail
+
+repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+REPO="$repo" node --experimental-strip-types --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+
+const extension = await import(`${process.env.REPO}/home/.pi/agent/extensions/codex-jev-router.ts`);
+const handlers = new Map();
+let command;
+let thinking = "medium";
+const entries = [];
+const models = new Map([
+  ["openai-codex/gpt-5.6-sol", { provider: "openai-codex", id: "gpt-5.6-sol" }],
+  ["openai-codex/gpt-5.6-terra", { provider: "openai-codex", id: "gpt-5.6-terra" }],
+  ["openai-codex/gpt-6-astra", { provider: "openai-codex", id: "gpt-6-astra" }],
+]);
+const ctx = {
+  model: models.get("openai-codex/gpt-5.6-terra"),
+  modelRegistry: { find: (provider, model) => models.get(`${provider}/${model}`) },
+  sessionManager: { getSessionId: () => "router-test-session", getBranch: () => entries },
+  ui: { setStatus() {}, notify() {} },
+};
+const pi = {
+  on(name, handler) { handlers.set(name, handler); },
+  registerCommand(name, value) { if (name === "route") command = value; },
+  appendEntry(customType, data) { entries.push({ type: "custom", customType, data }); },
+  async setModel(model) { ctx.model = model; return true; },
+  setThinkingLevel(level) { thinking = level; },
+  getThinkingLevel() { return thinking; },
+};
+
+extension.default(pi);
+await handlers.get("session_start")({}, ctx);
+await command.handler("once light", ctx);
+await handlers.get("before_agent_start")({ prompt: "Format the README heading." }, ctx);
+assert.equal(ctx.model.id, "gpt-5.6-sol");
+assert.equal(thinking, "low");
+assert.ok(entries.some((entry) => entry.customType === "codex-jev-router-pin"));
+const decision = entries.find((entry) => entry.customType === "codex-jev-router-decision").data;
+assert.equal(decision.routeId, "light");
+assert.equal(decision.source, "one-shot");
+assert.equal("task" in decision, true);
+assert.equal(JSON.stringify(decision).includes("Format the README"), false);
+await command.handler("once hard", ctx);
+await handlers.get("before_agent_start")({ prompt: "Investigate an ambiguous production defect." }, ctx);
+assert.equal(ctx.model.id, "gpt-6-astra");
+assert.equal(thinking, "high");
+NODE
+
+printf 'PASS codex Jev router explicit override\n'
