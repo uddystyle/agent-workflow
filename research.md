@@ -134,6 +134,6 @@
 - 0.65 → 0.70 の差分は underpowered だった #15（very-hard→hard@0.68）が fallback に落ちるだけで、正解分類を 1 件も失わない。
 - 0.75 以上は #11（hard@0.73）が fallback=normal に落ち、fallback-underpowered をむしろ増やす。
 - 唯一残る overspend #4（light→normal@0.86、パッケージ横断 rename の本質的曖昧さ）はどの閾値でも消えず、overspend は安全方向（能力過剰・コスト増・正誤リスクなし）なので許容する。
-- 補足: very-hard 群の大半は hard-gate keyword（schema / security / credential / production）が先に `hard` へ上げるため、実 pipeline では underpowered の実害はさらに小さい（gate は正規表現・コード内、routing-policy §実装済み範囲）。
+- 補足: very-hard 群の大半は hard-gate keyword（schema / security / credential / production）が先に `hard` へ上げるため、実 pipeline では underpowered の実害はさらに小さい（gate は config `hardGate.patterns` の設定データ、routing-policy §実装済み範囲）。
 
 **決定:** `minimumConfidence` を **0.65 → 0.70** に変更（`home/.pi/agent/codex-jev-router.json`）。根拠は 0.70 で exact 91%・underpowered 0・coverage 69% が両立し、0.65 より underpowered が1件減り正解を失わない点。出典: 上記ローカル実測（再現コマンド・確認日）。**限界:** 合成16件・各1回の Jev 判定で n が小さく、Jev は完全決定的ではない（routing-policy §Jev question shape）。「閾値の調整」はこの標本での選点であり、実 session の誤ルーティングは継続監視する（decision entry は `/route report` で集計可能）。

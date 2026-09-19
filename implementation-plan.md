@@ -4,7 +4,7 @@
 
 ## Status（2026-09-19）
 
-prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559ed`、TaskClassifier/report `6a5113c`、校准 `2a07b0e` / research.md §11、実測は research.md §10）。
+prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559ed`、TaskClassifier/report `6a5113c`、校准 `2a07b0e` / research.md §11、hard gate 設定データ化 `9ffd892`、実測は research.md §10）。
 
 - Milestone 0（harness / baseline）: ✅ `tests/codex-jev-router.sh`（fake provider + fetch スタブで外部通信なし）。baseline は research.md §7。
 - Milestone 1（deterministic router skeleton）: ✅ `/route status|auto|pin|once|reset|explain|report`、typed config、pin/decision の custom entry と session-start 復元、`setModel()` + `setThinkingLevel()` の検証付き適用、`model_select`/`thinking_level_select` の manual 検出。
@@ -13,7 +13,7 @@ prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559
 - Milestone 4（calibration / guarded rollout）: 🔶 confidence 校准は実施済み（`jev-calibration.sh`/`.ts` が observation harness、ラベル付き16タスク実測・threshold sweep で `minimumConfidence` を 0.65 → 0.70 に調整。詳細は research.md §11）。guarded rollout（light のみ有効化→段階拡張）と誤ルーティングの定期レビュー工程は未実施。
 - 将来境界（BudgetManager / GenerationFallback / project-local opt-out）: 未実装（architecture.md の乖離欄と同一）。
 
-未実装のまま残る点: budget `manual`/`estimated`、quota state の永続化、project-local opt-out、hard gate の設定データ化、M4 の guarded rollout と誤ルーティング定期レビュー。observation は `jev-calibration.sh`（§11）で実施済み。
+未実装のまま残る点: budget `manual`/`estimated`、quota state の永続化、project-local opt-out、M4 の guarded rollout と誤ルーティング定期レビュー。observation は `jev-calibration.sh`（§11）、hard gate は設定データ化（`hardGate.patterns`）済み。
 
 ## Scope
 

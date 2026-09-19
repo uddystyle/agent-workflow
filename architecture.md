@@ -93,7 +93,7 @@ The ledger distinguishes:
 
 提案からの乖離:
 
-- hard gate は正規表現の keyword 判定で `hard` にのみ上げる（`very-hard` への切替や追加 confirmation はしない）。gate は設定データでなくコード内のため、調整は extension の変更になる。
+- hard gate は keyword 判定（config `hardGate.patterns` の単語を word-boundary・case-insensitive で照合）で `hard` にのみ上げる（`very-hard` への切替や追加 confirmation はしない）。パターンは設定データ化済みで、調整は `codex-jev-router.json` の変更になる。
 - Jev は Choice のみ。提案の optional Nouls（`security_sensitive` / `migration` / `ambiguous_requirements`）は未実装で、security/migration は keyword gate で拾う。
 - budget state（`manual` / `estimated`）は未実装。`/route status` は quota を `unknown` と表示するだけ。
 - 観測は custom entry（decision / pin）のみで、local export file は未作成。`/route explain` は最新 decision の reason、`/route report` は decision の route/source 別集計・fallback rate・Jev 集計を notify で返す。
