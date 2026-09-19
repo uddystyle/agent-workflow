@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -57,6 +58,14 @@ type JevRouteJudgment = {
   elapsedMs: number;
 };
 
+/** Bounded classifier input: the original prompt text is never persisted or transmitted beyond this redaction. */
+export type RedactedTaskSynopsis = { task: string; byteLength: number; sha256: string };
+
+/** Policy-agnostic classifier boundary so routing logic does not depend on the Jev transport. */
+export interface TaskClassifier {
+  classify(input: RedactedTaskSynopsis, signal?: AbortSignal): Promise<JevRouteJudgment>;
+}
+
 type RouterSelection = {
   routeId: CodexRouteId;
   source: RouteSource;
@@ -103,7 +112,7 @@ export function routeHardGate(prompt: string): CodexRouteId | undefined {
 }
 
 /** Redacts a user task into a bounded classifier input; the original prompt is never persisted. */
-export function createRedactedTaskSynopsis(prompt: string): { task: string; byteLength: number; sha256: string } {
+export function createRedactedTaskSynopsis(prompt: string): RedactedTaskSynopsis {
   const normalized = prompt.replace(/\s+/g, " ").trim();
   const task = normalized.slice(0, 2_000);
   return {
@@ -142,46 +151,135 @@ export function selectJevRoute(judgment: JevRouteJudgment, minimumConfidence: nu
   return { routeId: judgment.routeId, source: "auto", reason: "Jev selected a route above the configured confidence.", judgment };
 }
 
-async function classifyTaskWithJev(prompt: string, config: RouterConfig, signal: AbortSignal): Promise<JevRouteJudgment> {
-  const apiKey = process.env.TYPESAFE_API_KEY?.trim();
-  if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
-  const synopsis = createRedactedTaskSynopsis(prompt);
-  const timeout = AbortSignal.timeout(config.jev.timeoutMs);
-  const combined = AbortSignal.any([signal, timeout]);
-  const startedAt = performance.now();
-  const response = await fetch("https://api.typesafe.ai/v1/systemone", {
-    method: "POST",
-    headers: { "authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      model: config.jev.model,
-      state: { task: synopsis.task },
-      questions: {
-        route: {
-          type: "choice",
-          instructions: "Classify `task` by the engineering work it requires. Choose light for bounded search, formatting, documentation, or a trivial type/test fix. Choose normal for ordinary implementation, a bounded refactor, or several-file changes. Choose hard for ambiguous debugging, architecture, broad refactoring, or sensitive code. Choose very-hard for a high-blast-radius migration, security-impacting change, or difficult diagnosis. Choose unclear when the task does not establish enough scope.",
-          criteria: {
-            light: "Bounded routine work with a small blast radius.",
-            normal: "Ordinary implementation or refactor requiring normal engineering judgment.",
-            hard: "Complex, ambiguous, architectural, or sensitive work.",
-            "very-hard": "High-blast-radius migration, security-impacting work, or exceptionally difficult diagnosis.",
-            unclear: "The task scope is not established.",
+export type RouteReport = {
+  sessions: number;
+  decisions: number;
+  byRoute: Record<string, number>;
+  bySource: Record<string, number>;
+  fallbackCount: number;
+  jevCalls: number;
+  jevInputTokens: number;
+  jevOutputTokens: number;
+  averageConfidence: number | undefined;
+  averageElapsedMs: number | undefined;
+};
+
+/** Pure aggregation over recorded RouteDecision entries; used by the /route report command. */
+export function aggregateRouteDecisions(decisions: RouteDecision[]): RouteReport {
+  const byRoute: Record<string, number> = {};
+  const bySource: Record<string, number> = {};
+  let fallbackCount = 0;
+  let jevCalls = 0;
+  let jevInputTokens = 0;
+  let jevOutputTokens = 0;
+  let confidenceSum = 0;
+  let elapsedSum = 0;
+  const sessionIds = new Set<string>();
+  for (const decision of decisions) {
+    byRoute[decision.routeId] = (byRoute[decision.routeId] ?? 0) + 1;
+    bySource[decision.source] = (bySource[decision.source] ?? 0) + 1;
+    sessionIds.add(decision.sessionId);
+    if (decision.source === "fallback") fallbackCount += 1;
+    if (decision.jev) {
+      jevCalls += 1;
+      jevInputTokens += decision.jev.inputTokens ?? 0;
+      jevOutputTokens += decision.jev.outputTokens ?? 0;
+      confidenceSum += decision.jev.confidence;
+      elapsedSum += decision.jev.elapsedMs;
+    }
+  }
+  return {
+    sessions: sessionIds.size,
+    decisions: decisions.length,
+    byRoute,
+    bySource,
+    fallbackCount,
+    jevCalls,
+    jevInputTokens,
+    jevOutputTokens,
+    averageConfidence: jevCalls > 0 ? confidenceSum / jevCalls : undefined,
+    averageElapsedMs: jevCalls > 0 ? Math.round(elapsedSum / jevCalls) : undefined,
+  };
+}
+
+/** Scans a Pi session directory for recorded routing decisions, bounded to keep the command cheap. */
+export function buildRouteReport(sessionDir: string): RouteReport {
+  const decisions: RouteDecision[] = [];
+  let files = 0;
+  try {
+    for (const name of readdirSync(sessionDir)) {
+      if (!name.endsWith(".jsonl")) continue;
+      files += 1;
+      if (files > 300) break;
+      const filePath = join(sessionDir, name);
+      if (statSync(filePath).size > 25 * 1024 * 1024) continue;
+      for (const line of readFileSync(filePath, "utf8").split("\n")) {
+        if (!line.includes(ROUTER_DECISION_ENTRY)) continue;
+        try {
+          const entry = JSON.parse(line);
+          if (isRouteDecision(entry?.data)) decisions.push(entry.data);
+        } catch {
+          // Skip malformed lines; the report is best-effort.
+        }
+      }
+    }
+  } catch {
+    // Missing or unreadable session directory yields an empty report.
+  }
+  return aggregateRouteDecisions(decisions);
+}
+
+function formatCounts(counts: Record<string, number>): string {
+  const entries = Object.entries(counts);
+  return entries.length === 0 ? "none" : entries.map(([key, count]) => `${key} ${count}`).join(" · ");
+}
+
+/** Builds the TypeSafe Jev transport behind the TaskClassifier boundary. */
+export function createJevClassifier(model: string, timeoutMs: number): TaskClassifier {
+  return {
+    async classify(input, signal) {
+      const apiKey = process.env.TYPESAFE_API_KEY?.trim();
+      if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
+      const timeout = AbortSignal.timeout(timeoutMs);
+      const combined = AbortSignal.any([signal ?? new AbortController().signal, timeout]);
+      const startedAt = performance.now();
+      const response = await fetch("https://api.typesafe.ai/v1/systemone", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          model,
+          state: { task: input.task },
+          questions: {
+            route: {
+              type: "choice",
+              instructions: "Classify `task` by the engineering work it requires. Choose light for bounded search, formatting, documentation, or a trivial type/test fix. Choose normal for ordinary implementation, a bounded refactor, or several-file changes. Choose hard for ambiguous debugging, architecture, broad refactoring, or sensitive code. Choose very-hard for a high-blast-radius migration, security-impacting change, or difficult diagnosis. Choose unclear when the task does not establish enough scope.",
+              criteria: {
+                light: "Bounded routine work with a small blast radius.",
+                normal: "Ordinary implementation or refactor requiring normal engineering judgment.",
+                hard: "Complex, ambiguous, architectural, or sensitive work.",
+                "very-hard": "High-blast-radius migration, security-impacting work, or exceptionally difficult diagnosis.",
+                unclear: "The task scope is not established.",
+              },
+            },
           },
-        },
-      },
-    }),
-    signal: combined,
-  });
-  if (!response.ok) throw new Error(`codex-jev-router: Jev request failed with HTTP ${response.status}.`);
-  return parseJevRouteJudgment(await response.json(), Math.round(performance.now() - startedAt));
+        }),
+        signal: combined,
+      });
+      if (!response.ok) throw new Error(`codex-jev-router: Jev request failed with HTTP ${response.status}.`);
+      return parseJevRouteJudgment(await response.json(), Math.round(performance.now() - startedAt));
+    },
+  };
 }
 
 export default function codexJevRouter(pi: ExtensionAPI): void {
   let config: RouterConfig | undefined;
   let configError: string | undefined;
+  let classifier: TaskClassifier | undefined;
   let state: RouterSessionState = { applyingRoute: false, manualSelection: false };
 
   try {
     config = parseCodexRouterConfig(JSON.parse(readFileSync(ROUTER_CONFIG_PATH, "utf8")));
+    classifier = createJevClassifier(config.jev.model, config.jev.timeoutMs);
   } catch (error) {
     configError = errorMessage(error);
   }
@@ -266,7 +364,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
-    if (!config || configError || state.manualSelection) return;
+    if (!config || configError || !classifier || state.manualSelection) return;
     const requested = state.pendingRoute;
     state.pendingRoute = undefined;
     if (requested) {
@@ -280,7 +378,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       return;
     }
     try {
-      const judgment = await classifyTaskWithJev(event.prompt, config, ctx.signal ?? new AbortController().signal);
+      const judgment = await classifier.classify(createRedactedTaskSynopsis(event.prompt), ctx.signal ?? new AbortController().signal);
       const selection = selectJevRoute(judgment, config.jev.minimumConfidence, config.fallbackRoute);
       const applied = await applyRoute(selection.routeId, selection.source, selection.reason, ctx, event.prompt, selection.judgment);
       if (!applied) recordDecision(ctx, { routeId: config.fallbackRoute, source: "fallback", reason: "The selected route was unavailable; Pi kept its current selection.", judgment }, event.prompt);
@@ -291,7 +389,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("route", {
-    description: "Control Codex/Jev routing: status, auto, pin, once, reset, or explain",
+    description: "Control Codex/Jev routing: status, auto, pin, once, reset, explain, or report",
     handler: async (args, ctx) => {
       const [command = "status", routeText] = args.trim().split(/\s+/, 2);
       if (command === "status") {
@@ -321,12 +419,26 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
         ctx.ui.notify(applied ? `Pinned route ${routeText}.` : `Route ${routeText} is unavailable; Pi remains unchanged.`, applied ? "info" : "error");
         return;
       }
+      if (command === "report") {
+        const sessionDir = ctx.sessionManager.getSessionDir?.();
+        if (typeof sessionDir !== "string" || sessionDir.length === 0) {
+          ctx.ui.notify("Codex router report: the session directory is unavailable.", "error");
+          return;
+        }
+        const report = buildRouteReport(sessionDir);
+        const fallbackRate = report.decisions ? Math.round((report.fallbackCount / report.decisions) * 1000) / 10 : 0;
+        const jevLine = report.jevCalls > 0
+          ? `Jev ${report.jevCalls} calls · ${report.jevInputTokens} in / ${report.jevOutputTokens} out · avg conf ${report.averageConfidence?.toFixed(2)} · avg ${report.averageElapsedMs}ms`
+          : "Jev none";
+        ctx.ui.notify(`Router report: ${report.sessions} sessions · ${report.decisions} decisions · routes ${formatCounts(report.byRoute)} · sources ${formatCounts(report.bySource)} · fallback ${fallbackRate}% · ${jevLine}`, "info");
+        return;
+      }
       if (command === "explain") {
         const decision = state.lastDecision;
         ctx.ui.notify(decision ? `Latest route: ${decision.routeId} (${decision.source}): ${decision.reason}` : "No routing decision is recorded for this session.", "info");
         return;
       }
-      ctx.ui.notify("Use /route status | auto | pin <light|normal|hard|very-hard> | once <route> | reset | explain", "error");
+      ctx.ui.notify("Use /route status | auto | pin <light|normal|hard|very-hard> | once <route> | reset | explain | report", "error");
     },
   });
 }
