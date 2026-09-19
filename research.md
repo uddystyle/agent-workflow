@@ -422,3 +422,21 @@ for test in tests/*.sh; do bash "$test" || exit; done            # 全スイー�
 ```
 
 **限界:** fixture は 10 findings で小規模。絶対レベル境界は soft（上記）。上限は 8,000 **bytes**（行数でなく byte で数える）で超過分は末尾から切り捨て——harness は件数不一致をエラーにするので、軸を分けるか件数を減らす。出典: <https://docs.typesafe.ai/primitives/score>（2026-09-20）＋ローカル実測。
+
+## §22. very-hard 有効化判断フォローアップ 3（2026-09-20）
+
+**目的:** §15/§18 の定期追跡レビュー（ユーザー指示「1」= very-hard 有効化判断）。§15 の再現コマンドを同一制約で再実行し、very-hard 有効化の判断材料（実 session の gated 集計）が蓄積されたかを確認する。**結論: stage 2 維持（very-hard は gated のまま）。** 再現コマンドは §15 と同一（`aggregateRouteDecisions` による全 session dir 走査・file >25MB スキップ・1 dir 最大 300 file）。検証 2026-09-20（同一日・§18 と同じ日付の再走査）。
+
+**実測結果（確認日 2026-09-20、全 project session dir 走査）:**
+
+| 対象 | 件数 | 内容 |
+|---|---|---|
+| decision 合計 | 4 | 全て 2026-09-18・pre-fix（§15/§18 と同値、agent-workflow-main のみ） |
+| agent-workflow-main | 4 | normal fallback 2・light auto 2（09-18 12:04–12:13） |
+| judge-app | 1 | normal fallback（§15 と同じく file 55.9MB で 25MB 上限により集計対象外） |
+| **前回レビュー（§18・09-20）からの積み増し** | **0** | gated decision・very-hard 提案・jevCalls すべて 0 |
+| rolloutGatedCount | 0 | suggested very-hard の実測は依然なし |
+
+**session 状況:** §18 と同一——agent-workflow-main の最新 session（2026-09-18T12-12-02Z 開始）は auto-light pin 継続で最終書き込み 09-19T13:27 のまま、再分類による新規 decision なし。§19–§21 の consult boundary 実装（handoff 検証・状態解釈・重大度順位）は router の外で decision を積まない（observation-only）ため、この集計には現れない。
+
+**決定:** §15 の次回レビュー条件 (a) unpinned 実 session で decision が積まれる、(b) gated（suggested very-hard）が実測される、の**いずれも未発生**。§11 の Jev 非決定性と §12 の keyword hard gate の独立補完の分析は不変で、**前進の根拠なし → stage 2（`enabledRoutes: ["light", "hard"]`）を維持**。次回レビュー契機も §15 と同じ (a)/(b)。出典: 上記ローカル実測（§15 の再現コマンド・確認日 2026-09-20）。**限界:** §15 と同一——pin 継続により auto 経路が再発火しない間はデータが増えず、意図的に unpinned で作業しない限り判断には時間がかかる。
