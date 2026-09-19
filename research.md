@@ -360,3 +360,39 @@ for test in tests/*.sh; do bash "$test" || exit; done              # 全スイ�
 型チェック（一時 tsconfig、§17 と同一手順）PASS。
 
 **限界:** fixture は 5 文書（20 判定）で小規模。fragile の 0.52 は既定閾値では weak に拾えるがマージンが薄い。検証は consult 扱いで、skill には「任意・補助」として載せた（§7 参照。判定は人がする）。8,000 char を超える handoff は末尾が切れて「無い」と誤判定し得る（追加 calibration 対象）。出典: 上記 docs.typesafe.ai/primitives/noul の一次資料＋ローカル実測（確認日 2026-09-20）。
+
+## §20. Herdr 状態の解釈（Jev Noul・StateClassifier consult boundary）（2026-09-20）
+
+**目的:** herdr が state を分類できないとき（`unknown`、herdr SKILL.md:59——「agent は居るが分類に自信がない・完了を意味しない」）、state でなく **pane 内容**（herdr の detector が分類に使うのと同じ `--source detection` snapshot）を読み、5 状態の確率を出す。DECISIONS.md D-19（状態で完了を判断しない・失敗が `idle` に見える）の機械補助——「状態と中身を別々に引く」を consult として実装する。**判定は人がする**（observation-only・routing 不変）。#5 は当初「状態の解釈は無意味」で非推奨としていたが、対象を**状態フィールドではなく内容そのもの**に変えることで価値のある形に再設計した。
+
+**設計決定:**
+- `StateClassifier` 境界 + `createJevStateClassifier(model, timeoutMs)`——Noul 5 問を 1 request（`idle`/`working`/`blocked`/`done`/`fell_over`）、state は `{pane}`。
+- `fell_over` は D-19 の罠を表現: 「静かに見えても prompt にエラーが残っている（エラー / 枠切れ / クラッシュ後の truncation）」。
+- `createRedactedPaneSnapshot`——8,000 char bound・全文 sha256・原文非保存。redaction 3 種（task / handoff / pane）は内部ヘルパー `createBoundedSynopsis` に共通化した。
+- 実用: `bash state-classify.sh <agent-name>`（要 HERDR_ENV=1）。校准: `bash state-classify.sh --calibrate`。
+- `formatStateInterpretation` は表示のみ。`STATE_CLASSIFY_DEFAULT_THRESHOLD = 0.7`。
+
+**実測（確認日 2026-09-20、model `jev-1.13.0`・ラベル付き代表 6 snapshot × 5 状態、1 request ≈ 613–650 in / 85 out tokens）:**
+
+| snapshot | idle | working | blocked | done | fell-over |
+|---|---|---|---|---|---|
+| idle（plain prompt） | **31%** | 19% | 2% | 7% | 6% |
+| working | 2% | 99% | 3% | 2% | 5% |
+| blocked（承認ダイアログ） | 91% | 57% | **99%** | 5% | 4% |
+| done | 91% | 5% | 3% | 95% | 2% |
+| fell_over_trap（D-19 罠） | 27% | 23% | 4% | 44% | **92%** |
+| mixed_unknown | 9% | 88% | 6% | 4% | 7% |
+
+- **working / blocked / done / fell-over は 0.55–0.90 で一致率 100%（6/6）。D-19 trap rule（`fell-over ≥ t`）は 0.50–0.90 で 6/6。** 既定 0.7 はこの帯域の内側。
+- **idle だけ 50%（6 中 3）と不安定**——plain prompt に 31%・blocked に誤って 91%。ただし unknown 文脈で判断の要は blocked / fell-over / working の分離であり、用途を損なわない。**idle は信用しない**。idle を重要視するなら instruction を「`$ / >` の prompt マーカーが出力の後に無い」へ言い換えて再校准する余地を残す。
+- fell_over_trap の done 44% は「fallback を適用」という完了文への誤反応（閾値未満）、idle 27% は控えめで **D-19 の罠に陥らない安全側**に倒れている。
+
+**再現コマンド:**
+```sh
+zsh -i -c 'cd <repo>/main && bash state-classify.sh --calibrate'   # 校准（ラベル付き 6 snapshot + 閾値スイープ）· 要 interactive zsh の TYPESAFE_API_KEY
+bash state-classify.sh <agent-name>                                 # 実用: HERDR_ENV=1 のペイン内・`unknown` のとき
+for test in tests/*.sh; do bash "$test" || exit; done              # 全スイート（fetch スタブ・外部通信なし）
+```
+型チェック（一時 tsconfig、§17 と同一手順）PASS。
+
+**限界:** fixture は 6 snapshot（30 判定）で小規模。idle は信用しない（上記）。live 実行（`herdr agent get` + `herdr agent read --source detection`）は HERDR_ENV=1 が必要で、本セッションは herdr 外のため **校准のみ実測**。`unknown` は完了を意味しない（SKILL.md:59）ので、fell-over 高でも作業継続の可能性の判断は人がする。出典: herdr SKILL.md:55-59・DECISIONS.md D-19（ローカル正本）＋ローカル実測（確認日 2026-09-20）。Noul の API 形状は §19 と同じ一次資料（<https://docs.typesafe.ai/primitives/noul>・2026-09-20）。

@@ -179,15 +179,21 @@ export function applyRolloutGate(suggested: CodexRouteId, enabledRoutes: readonl
   return { routeId: "normal", suggestedRouteId: suggested, gated: true };
 }
 
-/** Redacts a user task into a bounded classifier input; the original prompt is never persisted. */
-export function createRedactedTaskSynopsis(prompt: string): RedactedTaskSynopsis {
-  const normalized = prompt.replace(/\s+/g, " ").trim();
-  const task = normalized.slice(0, 2_000);
+/** Shared bounded synopsis: whitespace-normalized, sliced to limit chars; the original text is never persisted. */
+function createBoundedSynopsis(text: string, limitChars: number): { text: string; byteLength: number; sha256: string } {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const snippet = normalized.slice(0, limitChars);
   return {
-    task,
-    byteLength: Buffer.byteLength(task),
+    text: snippet,
+    byteLength: Buffer.byteLength(snippet),
     sha256: createHash("sha256").update(normalized).digest("hex"),
   };
+}
+
+/** Redacts a user task into a bounded classifier input; the original prompt is never persisted. */
+export function createRedactedTaskSynopsis(prompt: string): RedactedTaskSynopsis {
+  const bounded = createBoundedSynopsis(prompt, 2_000);
+  return { task: bounded.text, byteLength: bounded.byteLength, sha256: bounded.sha256 };
 }
 
 /** Converts a TypeSafe System One response into the router's closed route vocabulary. */
@@ -596,31 +602,27 @@ export interface HandoffVerifier {
 
 /** Redacts a handoff doc into a bounded verifier input; the original text is never persisted. */
 export function createRedactedHandoffSynopsis(text: string): RedactedHandoffSynopsis {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  const snippet = normalized.slice(0, 8_000);
-  return {
-    text: snippet,
-    byteLength: Buffer.byteLength(snippet),
-    sha256: createHash("sha256").update(normalized).digest("hex"),
-  };
+  return createBoundedSynopsis(text, 8_000);
+}
+
+/** Reads one System One Noul answer as a probability; rejects malformed or out-of-range values. */
+function readNoulProbability(answers: Record<string, unknown>, id: string, what: string): number {
+  const answer = isRecord(answers[id]) ? answers[id] : undefined;
+  const p = answer?.noul;
+  if (typeof p !== "number" || p < 0 || p > 1) throw new Error(`codex-jev-router: Jev ${what} Noul answer is malformed.`);
+  return p;
 }
 
 /** Converts a TypeSafe System One Noul response into the handoff criterion probabilities. */
 export function parseHandoffNoulAnswers(value: unknown, elapsedMs: number): HandoffVerification {
   if (!isRecord(value) || !isRecord(value.answers)) throw new Error("codex-jev-router: Jev handoff response has no answers.");
   const answers = value.answers;
-  const readNoul = (id: "next_action" | "fragile_areas" | "pending_decisions" | "no_secret_value"): number => {
-    const answer = isRecord(answers[id]) ? answers[id] : undefined;
-    const p = answer?.noul;
-    if (typeof p !== "number" || p < 0 || p > 1) throw new Error("codex-jev-router: Jev handoff Noul answer is malformed.");
-    return p;
-  };
   const usage = isRecord(value.usage) ? value.usage : undefined;
   return {
-    nextAction: readNoul("next_action"),
-    fragileAreas: readNoul("fragile_areas"),
-    pendingDecisions: readNoul("pending_decisions"),
-    noSecretValue: readNoul("no_secret_value"),
+    nextAction: readNoulProbability(answers, "next_action", "handoff"),
+    fragileAreas: readNoulProbability(answers, "fragile_areas", "handoff"),
+    pendingDecisions: readNoulProbability(answers, "pending_decisions", "handoff"),
+    noSecretValue: readNoulProbability(answers, "no_secret_value", "handoff"),
     inputTokens: numberOrUndefined(usage?.input_tokens),
     outputTokens: numberOrUndefined(usage?.output_tokens),
     elapsedMs,
@@ -695,6 +697,144 @@ export function createJevHandoffVerifier(model: string, timeoutMs: number): Hand
       });
       if (!response.ok) throw new Error(`codex-jev-router: Jev request failed with HTTP ${response.status}.`);
       return parseHandoffNoulAnswers(await response.json(), Math.round(performance.now() - startedAt));
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Agent state interpretation (Noul) — consult boundary for Herdr agent states.
+// Trigger: `herdr agent get` returns `unknown`。D-19 の穴——state は落ちても
+// `idle` に見える。だから state でなく、herdr の detector が分類に使うのと同じ
+// pane 内容（`herdr agent read --source detection`）を 5 状態の Noul で読む。
+// Observation-only: 判定は人がする（consult）。route は何も変えない。
+// ---------------------------------------------------------------------------
+
+/** Lifecycle states Herdr classifies panes into (SKILL.md:55-59) plus the D-19 trap. */
+export type AgentStateId = "idle" | "working" | "blocked" | "done" | "fell-over";
+
+/** One Noul interpretation of a pane snapshot; each field is the probability the state is present. */
+export type AgentStateInterpretation = {
+  /** 入力待ちの prompt が見える（shell / agent）。 */
+  idle: number;
+  /** 進行中の仕事（streaming / spinner / tool call）が見える。 */
+  working: number;
+  /** 承認・質問ダイアログで待っている。 */
+  blocked: number;
+  /** 完了した仕事と新しい prompt が見える。 */
+  done: number;
+  /** 落ちが idle に見える（エラー / 枠切れ / クラッシュ後の prompt。D-19 の罠）。 */
+  fellOver: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  elapsedMs: number;
+};
+
+export type RedactedPaneSnapshot = { text: string; byteLength: number; sha256: string };
+
+/** Policy-independent state boundary so callers do not depend on the Jev transport. */
+export interface StateClassifier {
+  classify(input: RedactedPaneSnapshot, signal?: AbortSignal): Promise<AgentStateInterpretation>;
+}
+
+/** Redacts a pane snapshot into a bounded classifier input; the original content is never persisted. */
+export function createRedactedPaneSnapshot(text: string): RedactedPaneSnapshot {
+  return createBoundedSynopsis(text, 8_000);
+}
+
+/** Converts a TypeSafe System One Noul response into five state probabilities. */
+export function parseStateNoulAnswers(value: unknown, elapsedMs: number): AgentStateInterpretation {
+  if (!isRecord(value) || !isRecord(value.answers)) throw new Error("codex-jev-router: Jev state response has no answers.");
+  const answers = value.answers;
+  const usage = isRecord(value.usage) ? value.usage : undefined;
+  return {
+    idle: readNoulProbability(answers, "idle", "state"),
+    working: readNoulProbability(answers, "working", "state"),
+    blocked: readNoulProbability(answers, "blocked", "state"),
+    done: readNoulProbability(answers, "done", "state"),
+    fellOver: readNoulProbability(answers, "fell_over", "state"),
+    inputTokens: numberOrUndefined(usage?.input_tokens),
+    outputTokens: numberOrUndefined(usage?.output_tokens),
+    elapsedMs,
+  };
+}
+
+/** Display threshold for 要約。閾値は校准ハーネス（state-classify.sh --calibrate）の実測で決める。 */
+export const STATE_CLASSIFY_DEFAULT_THRESHOLD = 0.7;
+
+/** Pure display/verdict helper: per-state probability with a weak mark at the given threshold. */
+export function formatStateInterpretation(v: AgentStateInterpretation, threshold = STATE_CLASSIFY_DEFAULT_THRESHOLD): string {
+  const states: [string, number][] = [
+    ["idle", v.idle],
+    ["working", v.working],
+    ["blocked", v.blocked],
+    ["done", v.done],
+    ["fell-over", v.fellOver],
+  ];
+  return states.map(([name, p]) => `${name}: ${Math.round(p * 100)}%${p >= threshold ? "" : " (weak)"}`).join(" · ");
+}
+
+/** Builds the Noul state-interpretation transport behind the StateClassifier boundary. */
+export function createJevStateClassifier(model: string, timeoutMs: number): StateClassifier {
+  return {
+    async classify(input, signal) {
+      const apiKey = process.env.TYPESAFE_API_KEY?.trim();
+      if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
+      const timeout = AbortSignal.timeout(timeoutMs);
+      const combined = AbortSignal.any([signal ?? new AbortController().signal, timeout]);
+      const startedAt = performance.now();
+      const response = await fetch("https://api.typesafe.ai/v1/systemone", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          model,
+          state: { pane: input.text },
+          questions: {
+            idle: {
+              type: "noul",
+              instructions: "The pane content shows an interactive shell or agent prompt waiting for input, with no task in progress.",
+              criteria: {
+                true: "A prompt is visible and no work is underway.",
+                false: "No prompt is visible, or work is underway.",
+              },
+            },
+            working: {
+              type: "noul",
+              instructions: "The pane content shows active work: progress, streaming text, tool calls, spinners, or a turn in progress.",
+              criteria: {
+                true: "Clear signs of an in-progress turn or task are visible.",
+                false: "No in-progress work is visible.",
+              },
+            },
+            blocked: {
+              type: "noul",
+              instructions: "The pane content shows an approval or question dialog (e.g. allow a tool? y/n), or an agent waiting for a decision.",
+              criteria: {
+                true: "A dialog or question asking for input or approval is visible.",
+                false: "No approval or question dialog is visible.",
+              },
+            },
+            done: {
+              type: "noul",
+              instructions: "The pane content shows a completed task: a final answer or summary followed by a fresh prompt.",
+              criteria: {
+                true: "A finished result is visible followed by a prompt.",
+                false: "No completed work is visible.",
+              },
+            },
+            fell_over: {
+              type: "noul",
+              instructions: "The pane content shows a failure that could be mistaken for idle: an error, crash, quota or model outage, or a truncated response sitting at the prompt.",
+              criteria: {
+                true: "Error or failure text is visible even though the pane looks quiet.",
+                false: "No failure text is visible.",
+              },
+            },
+          },
+        }),
+        signal: combined,
+      });
+      if (!response.ok) throw new Error(`codex-jev-router: Jev request failed with HTTP ${response.status}.`);
+      return parseStateNoulAnswers(await response.json(), Math.round(performance.now() - startedAt));
     },
   };
 }

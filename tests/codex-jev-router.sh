@@ -2,6 +2,7 @@
 # Codex/Jev router が明示 override と Jev 経路（fetch スタブ）で route を適用し、decision を session に残す。
 # Jev 経路では適用成功時も judgment（confidence・token usage）が decision に残ることまで検証する。
 # さらに TaskClassifier 境界（createJevClassifier）、HandoffVerifier 境界（Noul 4 問・createJevHandoffVerifier）、
+# StateClassifier 境界（Noul 5 問・createJevStateClassifier）、
 # BudgetManager / GenerationFallback 境界、
 # /route report の集計・走査、project-local config（opt-out / enabled override / route 上書き）を検証する。
 set -euo pipefail
@@ -144,6 +145,44 @@ assert.notEqual(bounded.sha256, extension.createRedactedHandoffSynopsis(longHand
 // 不正な Noul answer（noul 欠落）は明示エラーで失敗する。
 globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { next_action: { type: "noul", noul: 0.9 } } }) });
 await assert.rejects(handoffVerifier.verify({ text: "x", byteLength: 1, sha256: "s" }), /malformed/);
+
+// State classifier 境界: herdr が unknown のとき pane 内容（--source detection）を Noul 5 問で読む。
+const stateClassifier = extension.createJevStateClassifier("jev-1.13.0", 5000);
+delete process.env.TYPESAFE_API_KEY;
+await assert.rejects(stateClassifier.classify({ text: "hi", byteLength: 2, sha256: "z" }), /TYPESAFE_API_KEY is not configured/);
+process.env.TYPESAFE_API_KEY = "router-test-key";
+let stateRequest;
+globalThis.fetch = async (url, options) => {
+  stateRequest = { url, options };
+  return { ok: true, json: async () => ({ answers: { idle: { type: "noul", noul: 0.9 }, working: { type: "noul", noul: 0.05 }, blocked: { type: "noul", noul: 0.95 }, done: { type: "noul", noul: 0.1 }, fell_over: { type: "noul", noul: 0.04 } }, usage: { input_tokens: 610, output_tokens: 40 } }) };
+};
+const paneSnapshot = extension.createRedactedPaneSnapshot("$ git status --short\n M README.md\n$");
+const stateV = await stateClassifier.classify(paneSnapshot);
+assert.equal(stateV.idle, 0.9);
+assert.equal(stateV.working, 0.05);
+assert.equal(stateV.blocked, 0.95);
+assert.equal(stateV.done, 0.1);
+assert.equal(stateV.fellOver, 0.04);
+assert.equal(stateV.inputTokens, 610);
+assert.equal(stateV.outputTokens, 40);
+const stateBody = JSON.parse(stateRequest.options.body);
+assert.equal(stateBody.model, "jev-1.13.0");
+assert.equal(stateBody.state.pane, paneSnapshot.text);
+assert.equal(stateBody.questions.idle.type, "noul");
+assert.equal(stateBody.questions.working.type, "noul");
+assert.equal(stateBody.questions.blocked.type, "noul");
+assert.equal(stateBody.questions.done.type, "noul");
+assert.equal(stateBody.questions.fell_over.type, "noul");
+const stateLine = extension.formatStateInterpretation(stateV);
+assert.ok(stateLine.includes("idle: 90%"), "状態ごとの表示");
+assert.ok(stateLine.includes("blocked: 95%"));
+assert.ok(stateLine.includes("working: 5% (weak)"), "低 probability 状態が weak と出る");
+const paneBounded = extension.createRedactedPaneSnapshot("助".repeat(12_000));
+assert.ok(paneBounded.text.length <= 8000, "pane snapshot も 8,000 char で切られる");
+assert.equal(paneBounded.sha256.length, 64);
+// 不正な Noul answer（noul 欠落）は明示エラーで失敗する。
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { idle: { type: "noul", noul: 0.9 } } }) });
+await assert.rejects(stateClassifier.classify({ text: "x", byteLength: 1, sha256: "s" }), /malformed/);
 
 // 純粋集計: aggregateRouteDecisions。
 const aggregated = extension.aggregateRouteDecisions([
