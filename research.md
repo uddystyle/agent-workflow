@@ -1,6 +1,6 @@
 # Pi / Codex Token Management with Jev — findings
 
-確認日: 2026-09-18
+確認日: 2026-09-18 / 2026-09-19
 
 ## 確認範囲と区別
 
@@ -88,3 +88,12 @@
 - direct HTTP API への実通信（`model: jev-latest`、`state: "test"`、noul 1問）は HTTP 200 で、応答の `model` は `jev-1.13.0`、`answers.ok.noul` は `0.64`、`usage` は input 273 / output 20 tokens だった。これで `jev-latest` が実体 `jev-1.13.0` に解決されることを実測した。再現（secret は環境変数 `$TYPESAFE_API_KEY` から引き、`model`/`answers`/`usage` の信号行だけを出力する）: `curl -sS -o <tmp> -w '%{http_code}' -X POST https://api.typesafe.ai/v1/systemone -H "Authorization: Bearer $TYPESAFE_API_KEY" -H 'Content-Type: application/json' -d '{"state":"test","model":"jev-latest","questions":{"ok":{"type":"noul","instructions":"Is this test input valid?"}}}'` の response を `jq -c '{model, answers, usage}'` で抜粋（確認日: 2026-09-19）。
 - `jev-latest` は将来移動し得る alias のため、実運用で pin するなら versioned model ID（`jev-1.13.0` 等）を使う。出典: <https://docs.typesafe.ai/models>（確認日: 2026-09-19）。
 - この repo の `codex-jev-router` は認証に `process.env.TYPESAFE_API_KEY` だけを使い、`pi-typesafe` package（未導入）の `/typesafe login` が保存する `~/.pi/agent/pi-typesafe/auth.json` は読まない。再現: `grep -n 'TYPESAFE_API_KEY' home/.pi/agent/extensions/codex-jev-router.ts`（確認日: 2026-09-19）。
+
+## 10. codex-jev-router の実セッション実測（ローカル実測）
+
+- **確認済み:** ルーターは実 Pi session で動いている。2026-09-18 の実 session に decision が 5 件（この repo の cwd session 4 件、judge-app の resume session 1 件）残っている。内訳は、fallback 3 件（TYPESAFE_API_KEY 未設定 2 件・unclear/低 confidence 1 件）、`auto` で `light` を適用した 2 件。auto-light 2 件は、session 初期の `gpt-5.6-terra`/`medium` から初タスクで `gpt-5.6-sol`/`low` に切り替わり、以後 model_change / thinking_level_change の復帰記録なし（全 turn が sol/low で消費）。再現: `~/.pi/agent/sessions/--Users-uchidatomohisa-Code-agent-workflow-main--/*.jsonl` と judge-app 配下の JSONL から、`model_change`/`thinking_level_change`/custom `codex-jev-router-decision`/`-pin` エントリを時系列で抜粋（確認日: 2026-09-19）。
+- **確認済み:** decision を持つ cwd session の実測 token（assistant `message.usage` 合算）は次のとおり。`01a0b1ca`（fallback・key 未設定、terra/medium のまま）: turns 86 / input 472,570 / cacheRead 7,460,864 / output 31,166。`01a0b468`（auto light → sol/low）: turns 2 / input 11,043 / cacheRead 10,624 / output 35。`01a0b469`（fallback・unclear、terra/medium のまま）: turns 6 / input 58,846 / cacheRead 146,944 / output 1,767。`01a0b46e`（auto light → sol/low）: turns 18 / input 42,496 / cacheRead 82,560 / output 1,525。judge-app resume session（fallback・key 未設定）は turns 4,738 / input 14,074,284 / cacheRead 725,469,056 / output 1,724,495 で、これは decision 前から続く既存 session の合算である。再現: 上記 JSONL を同様に集計（確認日: 2026-09-19）。
+- **確認済み:** 実 session の decision 5 件はすべて judgment 永続化（commit c5ca162）前の記録で `jev` を持たない。修正後は `jev` が残る。実測最初の 1 件は 2026-09-19 の headless live 実行で、`at` の decision に `jev: {confidence: 0.91, inputTokens: 497, outputTokens: 54, elapsedMs: 595}` が記録された。再現: `zsh -i -c 'cd "$TMPDIR/jev-router-live2" && pi --session-dir "$TMPDIR/jev-router-live2/sessions" -p "Reply with exactly: DONE"'` と、その session JSONL から custom `codex-jev-router-decision` を抜粋（確認日: 2026-09-19。Jev 1 request と Codex 枠で微消費あり）。
+- **確認済み:** ルーターの Jev 分類 1 回のオーバーヘッドは、この環境の実測で input ~500 / output ~50 tokens・1 秒未満（上記 live 実行）だった。§9 の smoke（`jev-latest`・noul 1問・別 task）は input 273 / output 20 であり、同オーダー。Codex の 1 turn が input+cacheRead で数万〜数千万 token を消費する実測（上記表・§7）に対して無視できる規模である。
+- **確認済み（設定）:** `codex-jev-router.json` の `jev.model` は `jev-1.13.0` に pin した（commit 3a873c1）。TYPESAFE_API_KEY は対話的 zsh（`~/.zshrc:50`）からのみ環境に入るため、非対話経由（Herdr の background・外部 process など）で Pi を起動すると Jev は unavailable になり fallback（normal）に落ちる。これは 09-18 の実測（key 未設定 2 件）と同じ挙動である。
+- **限界:** ローカル実測で立証できるのは「light 判定時に sol/low へ切り替わり session がそれを維持する」ことと「Jev 分類コストが微小」ことまでである。「sol/low が terra/medium より subscription allowance をどの程度減らすか」の公開換算式は §6 のとおり未確認で、provider-reported token 数は allowance そのものではない。同一 task の対照比較なしに「節約量 = X token」と定量することはできない。
