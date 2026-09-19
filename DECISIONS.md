@@ -625,13 +625,14 @@ stow -D -d <古い root>/main -t ~ home     # 🔴 動かす前に。-d が古�
 **理由**: 常時表示されるpackage数と更新間隔より、promptとmodel情報へ画面を使う。Pi本体にpackage管理機能があり、
 footer表示のためだけに別managerを常駐させない。
 
-MCP clientにはMITの`pi-mcp-adapter`を使う。`packages/pi-packages.txt`から本体だけを導入し、用途が決まるまで
-serverは設定しない。serverが0件ならadapterはfooter statusを出さず、外部接続もしない。実在しないserverや
-固定の`0 MCP`表示は足さない。必要なcapability、接続先、送信範囲を決めてからserverを追加する。
+MCP clientの`pi-mcp-adapter`は管理対象から外した。serverが0件の間はclientは何もせず、導入する利点が無いため、
+将来serverを足す段階で改めて判断する。`home/.pi/agent/mcp.json`のserverは空のまま維持する。capability、接続先、
+送信範囲を決めてからserver追加を検討する。
 
-2.32.1はsourceとnpm integrityを照合し、typecheckとLinux CI成功を確認した。macOSの隔離検査では、build前の
-example生成物2件はbuild後に通り、protocol検査1件は単独再実行で通ったが、request header commandの子process
-cleanup 2件は再現した。この機能は設定せず、upstreamで解消するまで使わない。
+Webの検索・URL取得・動画理解には`pi-web-access`（MIT）を使う。`packages/pi-packages.txt`から本体だけを導入する。
+これはMCPではなくPiから直接HTTPで通信するthird-party extensionであり、検索・fetch・動画解析は外部送信と課金を
+伴う。API keyは`~/.pi/agent/web-search.json`に置き、repoやchatに書かない。必要なcapabilityが決まるまでは
+追加providerのAPI keyを設定せず、zero-config経路（Codex認証、keyless DuckDuckGo）に留める。
 
 ## D-24 browser診断はBashから始める
 

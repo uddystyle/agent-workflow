@@ -109,7 +109,7 @@ check_default_model() {
 check_default_model ready 'OK   Pi のdefault provider/modelはcatalogに存在する'
 check_default_model missing 'WARN Pi のdefault provider/modelがcatalogに無い'
 check_default_model unreadable 'WARN Pi のmodel catalogを読めない'
-printf '%s\n' '{"defaultProvider":"alpha","theme":"everforest","packages":["npm:pi-mcp-adapter"]}' >"$tmp/.pi/agent/settings.json"
+printf '%s\n' '{"defaultProvider":"alpha","theme":"everforest","packages":["npm:pi-web-access"]}' >"$tmp/.pi/agent/settings.json"
 out=$(env HOME="$tmp" PATH="$tmp/model-bin:$PATH" "$doctor_repo/tests/doctor.sh" 2>&1)
 [[ $out == *'管理対象のPi packagesは設定済み'* ]] || fail '管理対象のPi packageを確認しなかった'
 [[ $out == *'Piはrepo管理のEverforest themeを使う'* ]] || fail 'PiのEverforest themeを確認しなかった'
