@@ -97,3 +97,43 @@
 - **確認済み:** ルーターの Jev 分類 1 回のオーバーヘッドは、この環境の実測で input ~500 / output ~50 tokens・1 秒未満（上記 live 実行）だった。§9 の smoke（`jev-latest`・noul 1問・別 task）は input 273 / output 20 であり、同オーダー。Codex の 1 turn が input+cacheRead で数万〜数千万 token を消費する実測（上記表・§7）に対して無視できる規模である。
 - **確認済み（設定）:** `codex-jev-router.json` の `jev.model` は `jev-1.13.0` に pin した（commit 3a873c1）。TYPESAFE_API_KEY は対話的 zsh（`~/.zshrc:50`）からのみ環境に入るため、非対話経由（Herdr の background・外部 process など）で Pi を起動すると Jev は unavailable になり fallback（normal）に落ちる。これは 09-18 の実測（key 未設定 2 件）と同じ挙動である。
 - **限界:** ローカル実測で立証できるのは「light 判定時に sol/low へ切り替わり session がそれを維持する」ことと「Jev 分類コストが微小」ことまでである。「sol/low が terra/medium より subscription allowance をどの程度減らすか」の公開換算式は §6 のとおり未確認で、provider-reported token 数は allowance そのものではない。同一 task の対照比較なしに「節約量 = X token」と定量することはできない。
+
+## §11. Jev confidence 校准と minimumConfidence 調整（2026-09-19）
+
+**目的:** routing-policy の「校准前基線 0.65」を、confidence 分布の実測で調整する。実装計画 Milestone 4 の observation 手順（ラベル付き代表タスクを Jev に通し、提案 class だけを記録する）を満たす。
+
+**方法（observation-only・route 変更なし）:** repo に追加した `jev-calibration.ts`（ラベル付き代表タスク16件を production classifier に通す）と `jev-calibration.sh`（ラッパー・`TYPESAFE_API_KEY` の在処確認のみで値は出さない）。使用する question 形状・model は production の `home/.pi/agent/codex-jev-router.json` から読む（`jev-1.13.0`、timeout 5000ms）。ラベルは routing-policy の Jev criteria（light=小爆発半径の定型的作業 / normal=通常実装 / hard=複雑・曖昧・アーキテクチャ / very-hard=高爆発半径または困難な診断）に従い、各 class 4 件ずつ合成した。
+
+再現（秘密は環境変数・値は出さない）: `zsh -i -c 'cd <repo>/main && bash jev-calibration.sh'`（確認日: 2026-09-19、Jev 16 request 消費）。
+
+**実測結果（16 タスク / jev-1.13.0 / 2026-09-19T12:48Z）:**
+
+| # | label | predicted | conf | # | label | predicted | conf |
+|---|---|---|---|---|---|---|---|
+| 1 | light | light | 0.99 | 9 | hard | hard | 0.98 |
+| 2 | light | light | 1.00 | 10 | hard | hard | 0.44 |
+| 3 | light | light | 0.99 | 11 | hard | hard | 0.73 |
+| 4 | light | normal | 0.86 | 12 | hard | normal | 0.55 |
+| 5 | normal | light | 0.44 | 13 | very-hard | hard | 0.31 |
+| 6 | normal | normal | 0.90 | 14 | very-hard | very-hard | 0.92 |
+| 7 | normal | normal | 0.94 | 15 | very-hard | hard | 0.68 |
+| 8 | normal | normal | 0.75 | 16 | very-hard | very-hard | 0.96 |
+
+閾値スイープ（correct = 分類済みのうち label と一致、underpowered = label より軽い route に分類、overspend = 重い route、unclear/低 confidence は router どおり normal fallback 扱い）:
+
+| thr | 分類 | exact% | underpowered | overspend | thr | 分類 | exact% | underpowered | overspend |
+|---|---|---|---|---|---|---|---|---|---|
+| 0.45 | 13/16 | 77% | 2 | 1 | 0.75 | 10/16 | 89% | 0（hard@0.73 が fallback 化） | 1 |
+| 0.55 | 13/16 | 77% | 2 | 1 | 0.80 | 9/16 | 89% | 0 | 1 |
+| 0.60 | 12/16 | 83% | 1 | 1 | 0.85 | 9/16 | 89% | 0 | 1 |
+| 0.65 | 12/16 | 83% | 1 | 1 | 0.90 | 8/16 | 100% | 0 | 0 |
+| **0.70** | **11/16** | **91%** | **0** | **1** | 0.95 | 5/16 | 100% | 0 | 0 |
+
+**分析:**
+- confidence は二峰性で概ね情報的。正解は 0.73–1.00 に集中し、誤分類の低 confidence 予測（0.31 / 0.44 / 0.55 / 0.68）は閾値で fallback に吸える。
+- 0.65 → 0.70 の差分は underpowered だった #15（very-hard→hard@0.68）が fallback に落ちるだけで、正解分類を 1 件も失わない。
+- 0.75 以上は #11（hard@0.73）が fallback=normal に落ち、fallback-underpowered をむしろ増やす。
+- 唯一残る overspend #4（light→normal@0.86、パッケージ横断 rename の本質的曖昧さ）はどの閾値でも消えず、overspend は安全方向（能力過剰・コスト増・正誤リスクなし）なので許容する。
+- 補足: very-hard 群の大半は hard-gate keyword（schema / security / credential / production）が先に `hard` へ上げるため、実 pipeline では underpowered の実害はさらに小さい（gate は正規表現・コード内、routing-policy §実装済み範囲）。
+
+**決定:** `minimumConfidence` を **0.65 → 0.70** に変更（`home/.pi/agent/codex-jev-router.json`）。根拠は 0.70 で exact 91%・underpowered 0・coverage 69% が両立し、0.65 より underpowered が1件減り正解を失わない点。出典: 上記ローカル実測（再現コマンド・確認日）。**限界:** 合成16件・各1回の Jev 判定で n が小さく、Jev は完全決定的ではない（routing-policy §Jev question shape）。「閾値の調整」はこの標本での選点であり、実 session の誤ルーティングは継続監視する（decision entry は `/route report` で集計可能）。
