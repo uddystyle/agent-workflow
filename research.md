@@ -259,3 +259,29 @@ console.log(JSON.stringify(ext.aggregateRouteDecisions(ds), null, 2));'
 **なぜ 0 か:** agent-workflow-main の最新 session（09-18T12:12Z 開始・09-19T04:27Z まで継続）は 09-18 12:13 の **auto-light pin**（source `auto`）が session 内で有効なままで、09-19 の prompt は `state.pin` により再分類されない（「Choose once. Stay pinned.」の正しい挙動）。つまり未使用ではなく、pin 継続により auto 経路が再発火していない。
 
 **決定:** very-hard 有効化の判断材料（実 session の gated 集計）がまだ 0 収集。§11/§12 の Jev 非決定性（very-hard 相当タスクで conf 0.47–0.96）と keyword hard gate の独立補完の分析は変わらず、**前進の根拠なし → stage 2（`enabledRoutes: ["light", "hard"]`）を維持**。次回は (a) unpinned の実 session で再分類が発生し decision が積まれた時、または (b) gated（suggested very-hard）が実測された時点でレビューする。出典: 上記ローカル実測（再現コマンド・確認日）。**限界:** pin 継続により auto 経路が発火しない間はデータが増えない。意図的に unpinned で作業しない限り、判断には時間がかかる。
+
+## §16. Project-local config override 層（enabled override / route 上書き）（2026-09-19）
+
+**目的:** implementation-plan 残件の「project-local の `enabled: true` override / route 上書き（opt-out のみ実装だった）」を実装する。§14 の opt-out を、project 単位で**有効化・route 割当・fallback を上書きできる config 層**へ拡張し、global に optional な `enabled` master switch を足して `enabled: true` に実効を与える。
+
+**設計決定:**
+- **global config**（`codex-jev-router.json`）: optional な `enabled: boolean`（省略時 `true`）。`false` なら全 project の自動経路を停止する（project の `enabled: true` が無い限り）。非 boolean は設定エラー。
+- **project ファイル**（`<cwd>/.codex-jev-router.json`）:
+  - **v1**（後方互換）: `{version: 1, enabled: false}` だけが opt-out マーカー。他は既定（global 有効）。§14 の意味論を維持。
+  - **v2**（override 層）: `{version: 2, enabled?, routes?, fallbackRoute?}`。`routes` は route id ごとの**完全な route 定義**（`provider`/`model`/`thinkingLevel`）の部分集合で、指定した route だけ global を上書き。未指定 route・未指定 `fallbackRoute` は global のまま。
+- **優先順位:** project `enabled: false` は opt-out——`routes`/`fallbackRoute` は**無視**され（opt-out が勝つ）、明示コマンドは global の route 定義を使う。project `enabled: true` は global off をその project だけ上書きして有効化。project に `enabled` が無ければ global に従う。
+- **上書きできないもの:** `jev`（model・threshold・timeout）、`budget`、`hardGate.patterns`、`rollout.enabledRoutes` は global のみ。
+- **壊れたファイル**（bad version・不完全な route・不正な fallbackRoute・非 boolean enabled）は**全体を無視**して既定（global 有効）。
+- **表示:** `/route status` に「project opt-out」/「project overrides」/「routing disabled (config)」を出す。
+
+**API 確認:** 新たな Pi API は不要。検出は §14 で確認済みの `ExtensionContext.cwd`（command ctx は `ExtensionCommandContext extends ExtensionContext`）を使う。出典: ローカルの Pi 0.85.1 型定義（`$(npm root -g)/@earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts:209,254`、確認日 2026-09-19）。
+
+**検証:** `tests/codex-jev-router.sh` に追加——`parseProjectConfig`（v1/v2・壊れた形状・`enabled` の型）、`parseCodexRouterConfig` の `enabled`（省略時 true・非 boolean 拒否）、`applyProjectLocalOverrides`（部分上書きで未指定 route は global）、`applyProjectLocalConfig`（opt-out が勝つ・`enabled:true` が global off を上書き・`projectOverrides` 表示）、E2E（v2 ファイルで one-shot に `routes.light` 上書きが反映・Jev unavailable で上書き `fallbackRoute` が適用・status に「project overrides」）。再現コマンド:
+
+```sh
+bash tests/codex-jev-router.sh      # 全スイートでの実行は `for test in tests/*.sh; do bash "$test" || exit; done`
+```
+
+型チェック（一時 tsconfig: module esnext / moduleResolution bundler / strict / skipLibCheck / typeRoots=Pi pkg の node_modules/@types / paths=`@earendil-works/pi-coding-agent`→Pi dist/index.d.ts）PASS。全テストスイート PASS（確認日 2026-09-19）。
+
+**限界:** 現 deploy は global `enabled: true` なので project `enabled: true` は実効 no-op（global off にした時に意味を持つ）。opt-out ファイル内の route 上書きは無視される（opt-out と共存しない）。project config は git 管理対象になり得る trust-sensitive な設定で、repo 所有者なら誰でも route 割当を変えられる（§14 と同じ前提）。出典: 上記ローカル型定義＋ `tests/codex-jev-router.sh` のローカル実測（確認日 2026-09-19）。

@@ -66,14 +66,19 @@ The built-in `/model` and `/thinking` remain authoritative manual controls. On a
 - **対象外（常に適用）:** `hard-gate` / `one-shot` / `pin` / `manual`。安全 gate とユーザー override は段階展開の影響を受けない。`fallback`（Jev 不可・unclear・低 confidence）も元々 NORMAL なので影響なし。
 - **段階の前進**（例: 全 4 route＝very-hard 追加）は、実 session の誤ルーティングを periodic レビューしてから行う。レビューは `/route report`（route/source 別・fallback rate・gated 集計）と decision entry（task は hash/bytes のみ・原文なし）を突き合わせ、成功指標（implementation-plan M4）を確認する。
 
-## Project-local opt-out
+## Project-local config（opt-out / enabled override / route 上書き）
 
-global config は基本のまま、プロジェクト単位で**自動ルーティングを停止**できる（実装 2026-09-19。意図は implementation-plan Preconditions「model allocation はユーザー subscription resource で project settings は trust-sensitive」に拠る）。
+global config は基本のまま、プロジェクト単位で**自動ルーティングを停止**したり、**route の定義・fallback・有効化を上書き**したりできる（実装 2026-09-19。意図は implementation-plan Preconditions「model allocation はユーザー subscription resource で project settings は trust-sensitive」に拠る。詳細・検証は research.md §14・§16）。
 
-- **宣言:** プロジェクト root（Pi session の working directory）に `.codex-jev-router.json` を置き、`{ "version": 1, "enabled": false }` とする（`ctx.cwd` から検出。出典・確認方法は research.md §14）。
-- **停止するもの:** `before_agent_start` の自動経路すべて——Jev 分類と keyword hard gate（`hardGate.patterns`）の自動適用。opt-out は「このプロジェクトでは global policy が model を変えてはならない」という明示なので、**安全 gate も自動適用されない**。trade-off として、opt-out 中の migration/security 作業は既定 model のまま進む。必要なら `/route pin` で明示的に上げる。
+- **宣言:** プロジェクト root（Pi session の working directory）に `.codex-jev-router.json` を置く（`ctx.cwd` から検出）。
+  - **v1（後方互換）:** `{ "version": 1, "enabled": false }` は opt-out マーカー。それ以外の v1 内容は既定（global 有効）。
+  - **v2（override 層）:** `{ "version": 2, "enabled": true|false, "routes": {...}, "fallbackRoute": "..." }`。
+- **`enabled` の優先順位:** global config に optional な master switch `enabled`（省略時 `true`）を持つ。project config の `enabled` がこれを上書きする——`enabled: false` は project opt-out、`enabled: true` は **global が off でもその project だけ有効化**する。`enabled` 無しの v2 ファイルは既定（global の `enabled` に従う）。
+- **route 上書き（v2・`enabled: false` 以外）:** `routes` は route id ごとの**完全な route 定義**（`provider`/`model`/`thinkingLevel`）の部分集合。指定した route だけ global を上書きし、未指定 route・`fallbackRoute` 未指定は global のまま。`fallbackRoute` も上書きできる。上書きは auto/one-shot/pin の適用と decision 記録の両方に反映される。
+- **停止するもの（`enabled: false`）:** そのファイルの `routes`/`fallbackRoute` は**意味を持たない**（opt-out が勝つ。上書きは無視され、明示コマンドは global の route 定義を使う）。自動経路すべて——Jev 分類と keyword hard gate（`hardGate.patterns`）の自動適用——が止まる。opt-out は「このプロジェクトでは global policy が model を変えてはならない」という明示なので、安全 gate も自動適用されない。trade-off として、opt-out 中の migration/security 作業は既定 model のまま進む。必要なら `/route pin` で明示的に上げる。
 - **維持するもの:** 明示コマンド（`/route pin` / `once` / `auto` / `reset`）、built-in `/model`・`/thinking` の manual 検出（`model_select`/`thinking_level_select` の pin 記録）。`/route auto` は pin を消すが、このプロジェクトでは次の task で自動が動かない旨を status に示す。
-- **表示:** `/route status` が「project opt-out」を出す。マーカーが無い・壊れている・`enabled: true`・version 不一致は既定（global policy 有効）。ファイルを消せば復帰する。
+- **表示:** `/route status` が「project opt-out」/「project overrides」/「routing disabled (config)」を出す。ファイルが無い・壊れている・version 不一致は**ファイル全体を無視**して既定（global 有効）。global の `enabled: false` は全体停止（project の `enabled: true` がなければ）。ファイルを消せば復帰する。
+- **上書きできないもの:** `jev`（model・threshold・timeout）、`budget`、`hardGate.patterns`、`rollout.enabledRoutes` は global のみ。project は route 割当・fallback・有効化だけを上書きできる。
 
 ## Budget policy
 

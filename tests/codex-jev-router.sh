@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Codex/Jev router が明示 override と Jev 経路（fetch スタブ）で route を適用し、decision を session に残す。
 # Jev 経路では適用成功時も judgment（confidence・token usage）が decision に残ることまで検証する。
-# さらに TaskClassifier 境界（createJevClassifier）と /route report の集計・走査を検証する。
+# さらに TaskClassifier 境界（createJevClassifier）、/route report の集計・走査、
+# project-local config（opt-out / enabled override / route 上書き）を検証する。
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -267,13 +268,54 @@ await command.handler("status", ctx);
 assert.ok(notifications.some((n) => n.message.startsWith("Codex router:") && n.message.includes("quota")), "status に quota 行");
 rmSync(quotaPath, { force: true });
 
-// Project-local opt-out: .codex-jev-router.json の {version:1, enabled:false} で自動ルーティングを止める。
+// Project-local opt-out: .codex-jev-router.json の {enabled:false}（v1/v2）で自動ルーティングを止める。
 assert.equal(extension.parseProjectOptOut({ version: 1, enabled: false }), true);
 assert.equal(extension.parseProjectOptOut({ version: 1, enabled: true }), false);
-assert.equal(extension.parseProjectOptOut({ version: 2, enabled: false }), false);
+assert.equal(extension.parseProjectOptOut({ version: 2, enabled: false }), true);
 assert.equal(extension.parseProjectOptOut({}), false);
 assert.equal(extension.parseProjectOptOut("{not-json"), false);
 assert.equal(extension.projectOptOutPath("/tmp/project"), "/tmp/project/.codex-jev-router.json");
+
+// Project-local config override layer (v2): enabled master-switch override + route 上書き。
+assert.deepEqual(extension.parseProjectConfig({ version: 2, enabled: true }), { enabled: true });
+assert.deepEqual(extension.parseProjectConfig({ version: 2 }), {});
+assert.deepEqual(extension.parseProjectConfig({ version: 2, enabled: false }), { enabled: false });
+assert.deepEqual(extension.parseProjectConfig({ version: 2, routes: { light: { provider: "openai-codex", model: "gpt-5.6-terra", thinkingLevel: "low" } }, fallbackRoute: "hard" }), { routes: { light: { provider: "openai-codex", model: "gpt-5.6-terra", thinkingLevel: "low" } }, fallbackRoute: "hard" });
+assert.equal(extension.parseProjectConfig({ version: 2, routes: { light: { model: "gpt-5.6-terra" } } }), undefined, "不完全な route 定義は全体無効");
+assert.equal(extension.parseProjectConfig({ version: 2, fallbackRoute: "bogus" }), undefined);
+assert.equal(extension.parseProjectConfig({ version: 2, enabled: "yes" }), undefined);
+assert.equal(extension.parseProjectConfig({ version: 3, enabled: false }), undefined);
+assert.deepEqual(extension.parseProjectConfig({ version: 1, enabled: false }), { enabled: false });
+assert.equal(extension.parseProjectConfig({ version: 1, enabled: true }), undefined);
+
+// parseCodexRouterConfig: enabled は省略時 true、boolean 以外は拒否。
+assert.equal(realConfig.enabled, true);
+assert.equal(extension.parseCodexRouterConfig({ ...realConfig, enabled: false }).enabled, false);
+assert.throws(() => extension.parseCodexRouterConfig({ ...realConfig, enabled: "yes" }), /enabled/);
+
+// applyProjectLocalOverrides: 部分上書き（未指定 route は global のまま）。
+const overridden = extension.applyProjectLocalOverrides(realConfig, { routes: { light: { provider: "openai-codex", model: "gpt-5.6-terra", thinkingLevel: "low" } }, fallbackRoute: "hard" });
+assert.equal(overridden.routes.light.model, "gpt-5.6-terra");
+assert.equal(overridden.routes.hard.model, realConfig.routes.hard.model, "未指定 route は global のまま");
+assert.equal(overridden.fallbackRoute, "hard");
+assert.equal(overridden.enabled, true);
+
+// applyProjectLocalConfig: 解決ロジック（opt-out が勝つ・enabled:true が global off を上書き・上書きは projectOverrides 表示）。
+const none = extension.applyProjectLocalConfig(realConfig, undefined);
+assert.equal(none.optedOut, false);
+assert.equal(none.projectOverrides, false);
+assert.equal(none.config, realConfig);
+const opt = extension.applyProjectLocalConfig(realConfig, { enabled: false, routes: { light: { provider: "openai-codex", model: "gpt-5.6-terra", thinkingLevel: "low" } } });
+assert.equal(opt.optedOut, true);
+assert.equal(opt.projectOverrides, false);
+assert.equal(opt.config.routes.light.model, realConfig.routes.light.model, "opt-out では route 上書きは無視");
+const globalsOff = extension.applyProjectLocalConfig({ ...realConfig, enabled: false }, { enabled: true });
+assert.equal(globalsOff.config.enabled, true, "project の enabled:true が global off を上書き");
+const merged = extension.applyProjectLocalConfig(realConfig, { routes: { light: { provider: "openai-codex", model: "gpt-5.6-terra", thinkingLevel: "low" } } });
+assert.equal(merged.projectOverrides, true);
+assert.equal(merged.config.routes.light.model, "gpt-5.6-terra");
+assert.equal(merged.config.routes.hard.model, realConfig.routes.hard.model);
+assert.equal(merged.optedOut, false);
 const optOutDir = mkdtempSync(join(tmpdir(), "router-optout-"));
 try {
   assert.equal(extension.readProjectOptOut(optOutDir), false);
@@ -303,6 +345,37 @@ try {
 } finally {
   ctx.cwd = projectDir;
   rmSync(optOutDir, { recursive: true, force: true });
+}
+
+// Project-local route 上書き: v2 config が routes/fallbackRoute を部分上書きし、auto/fallback 経路に反映される。
+const overriddenDir = mkdtempSync(join(tmpdir(), "router-override-"));
+try {
+  writeFileSync(join(overriddenDir, ".codex-jev-router.json"), JSON.stringify({
+    version: 2,
+    enabled: true,
+    routes: { light: { provider: "openai-codex", model: "gpt-5.6-terra", thinkingLevel: "low" } },
+    fallbackRoute: "hard",
+  }));
+  ctx.cwd = overriddenDir;
+  await handlers.get("session_start")({}, ctx);
+  // one-shot light → 上書きされた light（terra/low）が適用される。
+  await command.handler("once light", ctx);
+  await handlers.get("before_agent_start")({ prompt: "Format the README heading." }, ctx);
+  assert.equal(ctx.model.id, "gpt-5.6-terra", "プロジェクトの routes.light 上書きが one-shot に反映される");
+  assert.equal(thinking, "low");
+  // fallbackRoute 上書き: Jev が unavailable → 上書きされた fallbackRoute（hard）が適用される。
+  delete process.env.TYPESAFE_API_KEY;
+  globalThis.fetch = async () => { throw new Error("unreachable"); };
+  await command.handler("auto", ctx);
+  await handlers.get("before_agent_start")({ prompt: "Format the README heading." }, ctx);
+  assert.equal(ctx.model.id, "gpt-6-astra", "プロジェクトの fallbackRoute 上書きが fallback に反映される");
+  assert.equal(thinking, "high");
+  // /route status に project overrides が出る。
+  await command.handler("status", ctx);
+  assert.ok(notifications.some((n) => n.message.startsWith("Codex router:") && n.message.includes("project overrides")), "status に project overrides");
+} finally {
+  ctx.cwd = projectDir;
+  rmSync(overriddenDir, { recursive: true, force: true });
 }
 rmSync(projectDir, { recursive: true, force: true });
 NODE

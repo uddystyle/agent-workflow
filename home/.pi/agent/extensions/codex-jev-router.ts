@@ -39,6 +39,7 @@ type ModelRoute = {
 
 type RouterConfig = {
   version: 1;
+  enabled: boolean;
   routes: Record<CodexRouteId, ModelRoute>;
   fallbackRoute: CodexRouteId;
   hardGate: { patterns: string[] };
@@ -104,6 +105,7 @@ type RouterSessionState = {
   applyingRoute: boolean;
   manualSelection: boolean;
   optedOut: boolean;
+  projectOverrides: boolean;
 };
 
 const routeIds: readonly CodexRouteId[] = ["light", "normal", "hard", "very-hard"];
@@ -129,7 +131,10 @@ export function parseCodexRouterConfig(value: unknown): RouterConfig {
     || typeof value.jev.minimumConfidence !== "number" || value.jev.minimumConfidence < 0 || value.jev.minimumConfidence > 1) {
     throw new Error("codex-jev-router: fallbackRoute, hardGate, rollout, budget, or jev settings are invalid.");
   }
-  return { version: 1, routes, fallbackRoute: value.fallbackRoute, hardGate: { patterns: value.hardGate.patterns }, rollout: { enabledRoutes: value.rollout.enabledRoutes }, budget: { mode: value.budget.mode, windowHours: value.budget.windowHours, softLimitTokens: value.budget.softLimitTokens }, jev: { model: value.jev.model, timeoutMs: value.jev.timeoutMs, minimumConfidence: value.jev.minimumConfidence } };
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
+    throw new Error("codex-jev-router: enabled must be a boolean when present.");
+  }
+  return { version: 1, enabled: value.enabled === false ? false : true, routes, fallbackRoute: value.fallbackRoute, hardGate: { patterns: value.hardGate.patterns }, rollout: { enabledRoutes: value.rollout.enabledRoutes }, budget: { mode: value.budget.mode, windowHours: value.budget.windowHours, softLimitTokens: value.budget.softLimitTokens }, jev: { model: value.jev.model, timeoutMs: value.jev.timeoutMs, minimumConfidence: value.jev.minimumConfidence } };
 }
 
 /** Compiles configured keywords into a deterministic matcher (whole-word, case-insensitive). */
@@ -294,24 +299,97 @@ export function quotaStatePath(): string {
   return process.env.CODEX_JEV_ROUTER_QUOTA_PATH ?? join(homedir(), ".pi", "agent", "codex-jev-router-quota.json");
 }
 
-/** Project-local opt-out marker file, read from the session's working directory. */
+/** Project-local config file, read from the session's working directory. */
 export function projectOptOutPath(cwd: string): string {
   return join(cwd, ".codex-jev-router.json");
 }
 
-/** Pure policy check: only an explicit versioned `enabled: false` opts a project out. */
-export function parseProjectOptOut(value: unknown): boolean {
-  return isRecord(value) && value.version === 1 && value.enabled === false;
+export type ProjectLocalConfig = {
+  enabled?: boolean;
+  routes?: Partial<Record<CodexRouteId, ModelRoute>>;
+  fallbackRoute?: CodexRouteId;
+};
+
+/**
+ * Parses the project-local config override layer:
+ * - v1 files are the legacy opt-out marker only ({version:1, enabled:false}).
+ * - v2 files may add `enabled` (overrides the global master switch) and route
+ *   overrides (`routes` partial + optional `fallbackRoute`).
+ * Missing, malformed, or unrecognized shapes return undefined (global applies).
+ */
+export function parseProjectConfig(value: unknown): ProjectLocalConfig | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.version === 1) {
+    return value.enabled === false ? { enabled: false } : undefined;
+  }
+  if (value.version !== 2) return undefined;
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") return undefined;
+  const enabled = value.enabled === undefined ? undefined : value.enabled;
+  let routes: Partial<Record<CodexRouteId, ModelRoute>> | undefined;
+  if (value.routes !== undefined) {
+    if (!isRecord(value.routes)) return undefined;
+    const parsed: Partial<Record<CodexRouteId, ModelRoute>> = {};
+    for (const routeId of routeIds) {
+      const route = value.routes[routeId];
+      if (route === undefined) continue;
+      if (!isRecord(route) || typeof route.provider !== "string" || typeof route.model !== "string" || !isThinkingLevel(route.thinkingLevel)) {
+        return undefined;
+      }
+      parsed[routeId] = { provider: route.provider, model: route.model, thinkingLevel: route.thinkingLevel };
+    }
+    routes = parsed;
+  }
+  let fallbackRoute: CodexRouteId | undefined;
+  if (value.fallbackRoute !== undefined) {
+    if (!isRouteId(value.fallbackRoute)) return undefined;
+    fallbackRoute = value.fallbackRoute;
+  }
+  if (enabled === undefined && routes === undefined && fallbackRoute === undefined) return {};
+  return { ...(enabled !== undefined ? { enabled } : {}), ...(routes !== undefined ? { routes } : {}), ...(fallbackRoute !== undefined ? { fallbackRoute } : {}) };
 }
 
-/** Reads and validates the project opt-out marker; missing, malformed, or non-matching shapes mean active (default). */
-export function readProjectOptOut(cwd: string): boolean {
-  if (!cwd) return false;
+/** Reads and validates the project-local config; missing, malformed, or unrecognized shapes mean global applies. */
+export function readProjectConfig(cwd: string): ProjectLocalConfig | undefined {
+  if (!cwd) return undefined;
   try {
-    return parseProjectOptOut(JSON.parse(readFileSync(projectOptOutPath(cwd), "utf8")));
+    return parseProjectConfig(JSON.parse(readFileSync(projectOptOutPath(cwd), "utf8")));
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+/** Merges project-local route/fallback overrides over the global config; unspecified routes stay global. */
+export function applyProjectLocalOverrides(config: RouterConfig, project: ProjectLocalConfig): RouterConfig {
+  return {
+    ...config,
+    routes: project.routes ? { ...config.routes, ...project.routes } : config.routes,
+    fallbackRoute: project.fallbackRoute ?? config.fallbackRoute,
+  };
+}
+
+/**
+ * Resolves the effective session config from the global config and the project-local
+ * file: an explicit `enabled: false` opts the project out (overrides are ignored),
+ * and an explicit `enabled: true` re-enables a globally disabled router for this
+ * project only.
+ */
+export function applyProjectLocalConfig(config: RouterConfig, project: ProjectLocalConfig | undefined): { config: RouterConfig; optedOut: boolean; projectOverrides: boolean } {
+  if (!project) return { config, optedOut: false, projectOverrides: false };
+  if (project.enabled === false) return { config, optedOut: true, projectOverrides: false };
+  let effective = project.enabled === true ? { ...config, enabled: true } : config;
+  const hasOverrides = project.routes !== undefined || project.fallbackRoute !== undefined;
+  if (hasOverrides) effective = applyProjectLocalOverrides(effective, project);
+  return { config: effective, optedOut: false, projectOverrides: hasOverrides };
+}
+
+/** Pure policy check: an explicitly disabled project config (v1 or v2 `enabled: false`) suspends auto routing. */
+export function parseProjectOptOut(value: unknown): boolean {
+  return parseProjectConfig(value)?.enabled === false;
+}
+
+/** Reads the project opt-out state; missing, malformed, or non-matching shapes mean active (default). */
+export function readProjectOptOut(cwd: string): boolean {
+  return readProjectConfig(cwd)?.enabled === false;
 }
 
 /** Starts a fresh quota window. */
@@ -432,20 +510,22 @@ export function createJevClassifier(model: string, timeoutMs: number): TaskClass
 }
 
 export default function codexJevRouter(pi: ExtensionAPI): void {
-  let config: RouterConfig | undefined;
+  let globalConfig: RouterConfig | undefined;
+  let config: RouterConfig | undefined; // effective for the current session (global + project overrides)
   let configError: string | undefined;
   let classifier: TaskClassifier | undefined;
-  let state: RouterSessionState = { applyingRoute: false, manualSelection: false, optedOut: false };
+  let state: RouterSessionState = { applyingRoute: false, manualSelection: false, optedOut: false, projectOverrides: false };
   let quota: QuotaState | undefined;
 
   try {
-    config = parseCodexRouterConfig(JSON.parse(readFileSync(ROUTER_CONFIG_PATH, "utf8")));
-    classifier = createJevClassifier(config.jev.model, config.jev.timeoutMs);
+    globalConfig = parseCodexRouterConfig(JSON.parse(readFileSync(ROUTER_CONFIG_PATH, "utf8")));
+    config = globalConfig;
+    classifier = createJevClassifier(globalConfig.jev.model, globalConfig.jev.timeoutMs);
     const stored = readQuotaState(quotaStatePath());
-    const windowHours = config.budget.windowHours;
-    quota = stored && stored.mode === config.budget.mode
-      ? rotateQuotaState({ ...stored, softLimitTokens: config.budget.softLimitTokens }, windowHours)
-      : createQuotaState(config.budget.mode, windowHours, config.budget.softLimitTokens);
+    const windowHours = globalConfig.budget.windowHours;
+    quota = stored && stored.mode === globalConfig.budget.mode
+      ? rotateQuotaState({ ...stored, softLimitTokens: globalConfig.budget.softLimitTokens }, windowHours)
+      : createQuotaState(globalConfig.budget.mode, windowHours, globalConfig.budget.softLimitTokens);
   } catch (error) {
     configError = errorMessage(error);
   }
@@ -500,12 +580,16 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   }
 
   pi.on("session_start", (_event, ctx) => {
-    state = { applyingRoute: false, manualSelection: false, optedOut: false };
+    state = { applyingRoute: false, manualSelection: false, optedOut: false, projectOverrides: false };
+    config = globalConfig;
     if (!config) {
       ctx.ui.setStatus("codex-jev-router", "Route: unavailable (invalid configuration)");
       return;
     }
-    state.optedOut = readProjectOptOut(ctx.cwd);
+    const resolved = applyProjectLocalConfig(config, readProjectConfig(ctx.cwd));
+    config = resolved.config;
+    state.optedOut = resolved.optedOut;
+    state.projectOverrides = resolved.projectOverrides;
     const sessionId = ctx.sessionManager.getSessionId();
     for (const entry of ctx.sessionManager.getBranch()) {
       if (entry.type !== "custom" || entry.customType !== ROUTER_PIN_ENTRY || !isPersistedPin(entry.data) || entry.data.sessionId !== sessionId) continue;
@@ -555,7 +639,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       return;
     }
     if (state.pin) return;
-    if (state.optedOut) return;
+    if (state.optedOut || !config.enabled) return;
     const hardGate = routeHardGate(event.prompt, config.hardGate.patterns);
     if (hardGate) {
       await applyRoute(hardGate, "hard-gate", "A deterministic safety gate required a higher-capability route.", ctx, event.prompt);
@@ -581,15 +665,17 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       if (command === "status") {
         const current = `${ctx.model?.provider ?? "unknown"}/${ctx.model?.id ?? "unknown"}:${pi.getThinkingLevel()}`;
         const pin = state.pin ? `${state.pin.source} ${state.pin.provider}/${state.pin.model}:${state.pin.thinkingLevel}` : "none";
-        const optOut = state.optedOut ? " · project opt-out" : "";
-        ctx.ui.notify(`Codex router: ${configError ? `disabled (${configError})` : "ready"}; current ${current}; pin ${pin}; ${formatQuotaLine(quota)}${optOut}.`, configError ? "warning" : "info");
+        const optOut = state.optedOut ? " · project opt-out" : config ? !config.enabled ? " · routing disabled (config)" : "" : "";
+        const project = state.projectOverrides ? " · project overrides" : "";
+        ctx.ui.notify(`Codex router: ${configError ? `disabled (${configError})` : "ready"}; current ${current}; pin ${pin}; ${formatQuotaLine(quota)}${optOut}${project}.`, configError ? "warning" : "info");
         return;
       }
       if (command === "auto" || command === "reset") {
         state.pin = undefined;
         state.pendingRoute = undefined;
         state.manualSelection = false;
-        ctx.ui.setStatus("codex-jev-router", state.optedOut ? "Route: project opted out of auto routing" : "Route: auto on the next task");
+        const suspended = state.optedOut || (config ? !config.enabled : false);
+        ctx.ui.setStatus("codex-jev-router", suspended ? "Route: auto routing is off" : "Route: auto on the next task");
         return;
       }
       if ((command === "pin" || command === "once") && isRouteId(routeText)) {
