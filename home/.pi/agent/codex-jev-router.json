@@ -24,7 +24,7 @@
   },
   "fallbackRoute": "normal",
   "jev": {
-    "model": "jev-latest",
+    "model": "jev-1.13.0",
     "timeoutMs": 5000,
     "minimumConfidence": 0.65
   }
