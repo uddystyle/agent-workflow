@@ -39,6 +39,9 @@
       "destructive"
     ]
   },
+  "rollout": {
+    "enabledRoutes": ["light"]
+  },
   "jev": {
     "model": "jev-1.13.0",
     "timeoutMs": 5000,

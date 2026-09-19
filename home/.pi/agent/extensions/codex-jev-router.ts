@@ -24,6 +24,7 @@ type RouterConfig = {
   routes: Record<CodexRouteId, ModelRoute>;
   fallbackRoute: CodexRouteId;
   hardGate: { patterns: string[] };
+  rollout: { enabledRoutes: CodexRouteId[] };
   jev: { model: string; timeoutMs: number; minimumConfidence: number };
 };
 
@@ -38,6 +39,8 @@ type RouteDecision = {
   model?: string;
   thinkingLevel?: ThinkingLevel;
   jev?: { confidence: number; inputTokens?: number; outputTokens?: number; elapsedMs: number };
+  rolloutGate?: boolean;
+  suggestedRouteId?: CodexRouteId;
   task: { byteLength: number; sha256: string; hardGate: boolean };
 };
 
@@ -72,6 +75,7 @@ type RouterSelection = {
   source: RouteSource;
   reason: string;
   judgment?: JevRouteJudgment;
+  rollout?: { suggestedRouteId: CodexRouteId; gated: boolean };
 };
 
 type RouterSessionState = {
@@ -99,11 +103,12 @@ export function parseCodexRouterConfig(value: unknown): RouterConfig {
     routes[routeId] = { provider: route.provider, model: route.model, thinkingLevel: route.thinkingLevel };
   }
   if (!isRouteId(value.fallbackRoute) || !isRecord(value.hardGate) || !isStringArray(value.hardGate.patterns)
+    || !isRecord(value.rollout) || !isRouteIdArray(value.rollout.enabledRoutes)
     || typeof value.jev.model !== "string" || !isPositiveInteger(value.jev.timeoutMs)
     || typeof value.jev.minimumConfidence !== "number" || value.jev.minimumConfidence < 0 || value.jev.minimumConfidence > 1) {
-    throw new Error("codex-jev-router: fallbackRoute, hardGate, or jev settings are invalid.");
+    throw new Error("codex-jev-router: fallbackRoute, hardGate, rollout, or jev settings are invalid.");
   }
-  return { version: 1, routes, fallbackRoute: value.fallbackRoute, hardGate: { patterns: value.hardGate.patterns }, jev: { model: value.jev.model, timeoutMs: value.jev.timeoutMs, minimumConfidence: value.jev.minimumConfidence } };
+  return { version: 1, routes, fallbackRoute: value.fallbackRoute, hardGate: { patterns: value.hardGate.patterns }, rollout: { enabledRoutes: value.rollout.enabledRoutes }, jev: { model: value.jev.model, timeoutMs: value.jev.timeoutMs, minimumConfidence: value.jev.minimumConfidence } };
 }
 
 /** Compiles configured keywords into a deterministic matcher (whole-word, case-insensitive). */
@@ -118,6 +123,16 @@ export function hardGatePatternsRegex(patterns: readonly string[]): RegExp | und
 export function routeHardGate(prompt: string, patterns: readonly string[]): CodexRouteId | undefined {
   const matcher = hardGatePatternsRegex(patterns);
   return matcher && matcher.test(prompt) ? "hard" : undefined;
+}
+
+/**
+ * Restricts which Jev-suggested routes a rollout stage may apply.
+ * NORMAL is always available as the implicit safe default; any other disabled
+ * route falls back to NORMAL and is flagged as gated for observability.
+ */
+export function applyRolloutGate(suggested: CodexRouteId, enabledRoutes: readonly CodexRouteId[]): { routeId: CodexRouteId; suggestedRouteId: CodexRouteId; gated: boolean } {
+  if (suggested === "normal" || enabledRoutes.includes(suggested)) return { routeId: suggested, suggestedRouteId: suggested, gated: false };
+  return { routeId: "normal", suggestedRouteId: suggested, gated: true };
 }
 
 /** Redacts a user task into a bounded classifier input; the original prompt is never persisted. */
@@ -171,6 +186,8 @@ export type RouteReport = {
   jevOutputTokens: number;
   averageConfidence: number | undefined;
   averageElapsedMs: number | undefined;
+  rolloutGatedCount: number;
+  rolloutGatedSuggested: Record<string, number>;
 };
 
 /** Pure aggregation over recorded RouteDecision entries; used by the /route report command. */
@@ -183,12 +200,18 @@ export function aggregateRouteDecisions(decisions: RouteDecision[]): RouteReport
   let jevOutputTokens = 0;
   let confidenceSum = 0;
   let elapsedSum = 0;
+  let rolloutGatedCount = 0;
+  const rolloutGatedSuggested: Record<string, number> = {};
   const sessionIds = new Set<string>();
   for (const decision of decisions) {
     byRoute[decision.routeId] = (byRoute[decision.routeId] ?? 0) + 1;
     bySource[decision.source] = (bySource[decision.source] ?? 0) + 1;
     sessionIds.add(decision.sessionId);
     if (decision.source === "fallback") fallbackCount += 1;
+    if (decision.rolloutGate === true && decision.suggestedRouteId) {
+      rolloutGatedCount += 1;
+      rolloutGatedSuggested[decision.suggestedRouteId] = (rolloutGatedSuggested[decision.suggestedRouteId] ?? 0) + 1;
+    }
     if (decision.jev) {
       jevCalls += 1;
       jevInputTokens += decision.jev.inputTokens ?? 0;
@@ -208,6 +231,8 @@ export function aggregateRouteDecisions(decisions: RouteDecision[]): RouteReport
     jevOutputTokens,
     averageConfidence: jevCalls > 0 ? confidenceSum / jevCalls : undefined,
     averageElapsedMs: jevCalls > 0 ? Math.round(elapsedSum / jevCalls) : undefined,
+    rolloutGatedCount,
+    rolloutGatedSuggested,
   };
 }
 
@@ -307,6 +332,8 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       model: route?.model,
       thinkingLevel: route?.thinkingLevel,
       jev: selection.judgment ? { confidence: selection.judgment.confidence, inputTokens: selection.judgment.inputTokens, outputTokens: selection.judgment.outputTokens, elapsedMs: selection.judgment.elapsedMs } : undefined,
+      rolloutGate: selection.rollout?.gated ? true : undefined,
+      suggestedRouteId: selection.rollout?.gated ? selection.rollout.suggestedRouteId : undefined,
       task: { byteLength: synopsis.byteLength, sha256: synopsis.sha256, hardGate: config ? routeHardGate(prompt, config.hardGate.patterns) !== undefined : false },
     };
     pi.appendEntry(ROUTER_DECISION_ENTRY, decision);
@@ -315,7 +342,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     return decision;
   }
 
-  async function applyRoute(routeId: CodexRouteId, source: RouteSource, reason: string, ctx: ExtensionContext, prompt = "", judgment?: JevRouteJudgment): Promise<boolean> {
+  async function applyRoute(routeId: CodexRouteId, source: RouteSource, reason: string, ctx: ExtensionContext, prompt = "", judgment?: JevRouteJudgment, rollout?: RouterSelection["rollout"]): Promise<boolean> {
     if (!config) return false;
     const route = config.routes[routeId];
     const candidate = ctx.modelRegistry.find(route.provider, route.model);
@@ -329,7 +356,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       state.pin = pin;
       state.manualSelection = source === "manual";
       pi.appendEntry(ROUTER_PIN_ENTRY, pin);
-      recordDecision(ctx, { routeId, source, reason, judgment }, prompt);
+      recordDecision(ctx, { routeId, source, reason, judgment, rollout }, prompt);
       return true;
     } finally {
       state.applyingRoute = false;
@@ -389,7 +416,9 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     try {
       const judgment = await classifier.classify(createRedactedTaskSynopsis(event.prompt), ctx.signal ?? new AbortController().signal);
       const selection = selectJevRoute(judgment, config.jev.minimumConfidence, config.fallbackRoute);
-      const applied = await applyRoute(selection.routeId, selection.source, selection.reason, ctx, event.prompt, selection.judgment);
+      const gate = applyRolloutGate(selection.routeId, config.rollout.enabledRoutes);
+      const routed = gate.gated ? { ...selection, routeId: gate.routeId, rollout: { suggestedRouteId: gate.suggestedRouteId, gated: true } } : selection;
+      const applied = await applyRoute(routed.routeId, routed.source, routed.reason, ctx, event.prompt, routed.judgment, routed.rollout);
       if (!applied) recordDecision(ctx, { routeId: config.fallbackRoute, source: "fallback", reason: "The selected route was unavailable; Pi kept its current selection.", judgment }, event.prompt);
     } catch (error) {
       const applied = await applyRoute(config.fallbackRoute, "fallback", `Jev was unavailable: ${errorMessage(error)}`, ctx, event.prompt);
@@ -439,7 +468,10 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
         const jevLine = report.jevCalls > 0
           ? `Jev ${report.jevCalls} calls · ${report.jevInputTokens} in / ${report.jevOutputTokens} out · avg conf ${report.averageConfidence?.toFixed(2)} · avg ${report.averageElapsedMs}ms`
           : "Jev none";
-        ctx.ui.notify(`Router report: ${report.sessions} sessions · ${report.decisions} decisions · routes ${formatCounts(report.byRoute)} · sources ${formatCounts(report.bySource)} · fallback ${fallbackRate}% · ${jevLine}`, "info");
+        const gatedLine = report.rolloutGatedCount > 0
+          ? ` · gated ${report.rolloutGatedCount} (suggested ${formatCounts(report.rolloutGatedSuggested)})`
+          : "";
+        ctx.ui.notify(`Router report: ${report.sessions} sessions · ${report.decisions} decisions · routes ${formatCounts(report.byRoute)} · sources ${formatCounts(report.bySource)} · fallback ${fallbackRate}% · ${jevLine}${gatedLine}`, "info");
         return;
       }
       if (command === "explain") {
@@ -467,6 +499,9 @@ function isPositiveInteger(value: unknown): value is number {
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string" && item.length > 0);
 }
+function isRouteIdArray(value: unknown): value is CodexRouteId[] {
+  return Array.isArray(value) && value.every(isRouteId);
+}
 function numberOrUndefined(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
@@ -480,5 +515,7 @@ function isPersistedPin(value: unknown): value is PersistedPin {
 }
 function isRouteDecision(value: unknown): value is RouteDecision {
   return isRecord(value) && value.version === 1 && typeof value.sessionId === "string" && isRouteId(value.routeId)
-    && typeof value.source === "string" && typeof value.reason === "string";
+    && typeof value.source === "string" && typeof value.reason === "string"
+    && (value.rolloutGate === undefined || typeof value.rolloutGate === "boolean")
+    && (value.suggestedRouteId === undefined || isRouteId(value.suggestedRouteId));
 }
