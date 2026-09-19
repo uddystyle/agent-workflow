@@ -23,6 +23,7 @@ type RouterConfig = {
   version: 1;
   routes: Record<CodexRouteId, ModelRoute>;
   fallbackRoute: CodexRouteId;
+  hardGate: { patterns: string[] };
   jev: { model: string; timeoutMs: number; minimumConfidence: number };
 };
 
@@ -97,18 +98,26 @@ export function parseCodexRouterConfig(value: unknown): RouterConfig {
     }
     routes[routeId] = { provider: route.provider, model: route.model, thinkingLevel: route.thinkingLevel };
   }
-  if (!isRouteId(value.fallbackRoute) || typeof value.jev.model !== "string" || !isPositiveInteger(value.jev.timeoutMs)
+  if (!isRouteId(value.fallbackRoute) || !isRecord(value.hardGate) || !isStringArray(value.hardGate.patterns)
+    || typeof value.jev.model !== "string" || !isPositiveInteger(value.jev.timeoutMs)
     || typeof value.jev.minimumConfidence !== "number" || value.jev.minimumConfidence < 0 || value.jev.minimumConfidence > 1) {
-    throw new Error("codex-jev-router: fallbackRoute or jev settings are invalid.");
+    throw new Error("codex-jev-router: fallbackRoute, hardGate, or jev settings are invalid.");
   }
-  return { version: 1, routes, fallbackRoute: value.fallbackRoute, jev: { model: value.jev.model, timeoutMs: value.jev.timeoutMs, minimumConfidence: value.jev.minimumConfidence } };
+  return { version: 1, routes, fallbackRoute: value.fallbackRoute, hardGate: { patterns: value.hardGate.patterns }, jev: { model: value.jev.model, timeoutMs: value.jev.timeoutMs, minimumConfidence: value.jev.minimumConfidence } };
 }
 
-/** Applies deterministic safety gates before an external semantic classifier is consulted. */
-export function routeHardGate(prompt: string): CodexRouteId | undefined {
-  return /\b(security|vulnerability|credential|secret|authentication|authorization|migration|schema|production|incident|data loss|destructive)\b/i.test(prompt)
-    ? "hard"
-    : undefined;
+/** Compiles configured keywords into a deterministic matcher (whole-word, case-insensitive). */
+export function hardGatePatternsRegex(patterns: readonly string[]): RegExp | undefined {
+  const words = patterns.filter((pattern) => pattern.length > 0);
+  if (words.length === 0) return undefined;
+  const escaped = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`\\b(?:${escaped.join("|")})\\b`, "i");
+}
+
+/** Applies the deterministic safety gate (configured keywords -> HARD) before Jev is consulted. */
+export function routeHardGate(prompt: string, patterns: readonly string[]): CodexRouteId | undefined {
+  const matcher = hardGatePatternsRegex(patterns);
+  return matcher && matcher.test(prompt) ? "hard" : undefined;
 }
 
 /** Redacts a user task into a bounded classifier input; the original prompt is never persisted. */
@@ -298,7 +307,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       model: route?.model,
       thinkingLevel: route?.thinkingLevel,
       jev: selection.judgment ? { confidence: selection.judgment.confidence, inputTokens: selection.judgment.inputTokens, outputTokens: selection.judgment.outputTokens, elapsedMs: selection.judgment.elapsedMs } : undefined,
-      task: { byteLength: synopsis.byteLength, sha256: synopsis.sha256, hardGate: routeHardGate(prompt) !== undefined },
+      task: { byteLength: synopsis.byteLength, sha256: synopsis.sha256, hardGate: config ? routeHardGate(prompt, config.hardGate.patterns) !== undefined : false },
     };
     pi.appendEntry(ROUTER_DECISION_ENTRY, decision);
     state.lastDecision = decision;
@@ -372,7 +381,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       return;
     }
     if (state.pin) return;
-    const hardGate = routeHardGate(event.prompt);
+    const hardGate = routeHardGate(event.prompt, config.hardGate.patterns);
     if (hardGate) {
       await applyRoute(hardGate, "hard-gate", "A deterministic safety gate required a higher-capability route.", ctx, event.prompt);
       return;
@@ -454,6 +463,9 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 }
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string" && item.length > 0);
 }
 function numberOrUndefined(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;

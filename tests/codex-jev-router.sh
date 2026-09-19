@@ -7,7 +7,7 @@ set -euo pipefail
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 REPO="$repo" node --experimental-strip-types --input-type=module <<'NODE'
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -140,6 +140,27 @@ try {
 } finally {
   rmSync(sessionDir, { recursive: true, force: true });
 }
+
+// 設定データ化した hard gate: config 検証・routeHardGate 直接・gate の E2E。
+const realConfig = extension.parseCodexRouterConfig(JSON.parse(readFileSync(`${process.env.REPO}/home/.pi/agent/codex-jev-router.json`, "utf8")));
+assert.equal(realConfig.hardGate.patterns.length, 12);
+assert.throws(() => extension.parseCodexRouterConfig({ ...realConfig, hardGate: { patterns: "security" } }), /hardGate/);
+assert.throws(() => extension.parseCodexRouterConfig({ ...realConfig, hardGate: { patterns: [""] } }), /hardGate/);
+assert.equal(extension.routeHardGate("Audit the SECURITY handling", realConfig.hardGate.patterns), "hard");
+assert.equal(extension.routeHardGate("make it secure", realConfig.hardGate.patterns), undefined);
+assert.equal(extension.routeHardGate("securityish plugin", realConfig.hardGate.patterns), undefined);
+assert.equal(extension.routeHardGate("data loss prevention", realConfig.hardGate.patterns), "hard");
+assert.equal(extension.routeHardGate("any task", []), undefined);
+assert.equal(extension.routeHardGate("migrate the schema", ["migration", "schema"]), "hard");
+assert.equal(extension.hardGatePatternsRegex([]), undefined);
+await command.handler("auto", ctx);
+await handlers.get("before_agent_start")({ prompt: "Plan the schema migration across services." }, ctx);
+assert.equal(ctx.model.id, "gpt-6-astra");
+assert.equal(thinking, "high");
+const gateDecision = entries.findLast((entry) => entry.customType === "codex-jev-router-decision").data;
+assert.equal(gateDecision.source, "hard-gate");
+assert.equal(gateDecision.routeId, "hard");
+assert.equal(gateDecision.task.hardGate, true);
 NODE
 
 printf 'PASS codex Jev router TaskClassifier report\n'

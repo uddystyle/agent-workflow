@@ -23,6 +23,22 @@
     }
   },
   "fallbackRoute": "normal",
+  "hardGate": {
+    "patterns": [
+      "security",
+      "vulnerability",
+      "credential",
+      "secret",
+      "authentication",
+      "authorization",
+      "migration",
+      "schema",
+      "production",
+      "incident",
+      "data loss",
+      "destructive"
+    ]
+  },
   "jev": {
     "model": "jev-1.13.0",
     "timeoutMs": 5000,
