@@ -4,16 +4,16 @@
 
 ## Status（2026-09-19）
 
-prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559ed`、実測は research.md §10）。
+prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559ed`、TaskClassifier/report `6a5113c`、実測は research.md §10）。
 
 - Milestone 0（harness / baseline）: ✅ `tests/codex-jev-router.sh`（fake provider + fetch スタブで外部通信なし）。baseline は research.md §7。
-- Milestone 1（deterministic router skeleton）: ✅ `/route status|auto|pin|once|reset|explain`、typed config、pin/decision の custom entry と session-start 復元、`setModel()` + `setThinkingLevel()` の検証付き適用、`model_select`/`thinking_level_select` の manual 検出。
-- Milestone 2（Jev adapter）: ✅ 直接 TypeSafe System One API・`TYPESAFE_API_KEY`・bounded synopsis（2,000 bytes）・strict timeout（5,000ms）・no retry・schema 検証・fail-open。ただし `TaskClassifier` interface の抽出はせず inline 実装。
-- Milestone 3（observability）: 🔶 decision / pin entry は実装済み（version・at・routeId・source・reason・model/thinking・jev confidence/tokens/elapsedMs・task hash/bytes）。offline report command は未実装。quota state は `unknown` のみ。
+- Milestone 1（deterministic router skeleton）: ✅ `/route status|auto|pin|once|reset|explain|report`、typed config、pin/decision の custom entry と session-start 復元、`setModel()` + `setThinkingLevel()` の検証付き適用、`model_select`/`thinking_level_select` の manual 検出。
+- Milestone 2（Jev adapter）: ✅ 直接 TypeSafe System One API・`TYPESAFE_API_KEY`・bounded synopsis（2,000 bytes）・strict timeout（5,000ms）・no retry・schema 検証・fail-open・`TaskClassifier` interface 抽出（`createJevClassifier(model, timeoutMs)` が Jev を transport として実装）。
+- Milestone 3（observability）: 🔶 decision / pin entry は実装済み（version・at・routeId・source・reason・model/thinking・jev confidence/tokens/elapsedMs・task hash/bytes）。offline report command を `/route report` として実装（session ディレクトリ走査→route/source 別集計・fallback rate・Jev 集計を notify）。未実装は quota state の永続化のみ（測定限界、research.md §10）。
 - Milestone 4（calibration / guarded rollout）: 未着手。`minimumConfidence: 0.65` は校准前基線。観測専用 mode も未実装。
 - 将来境界（BudgetManager / GenerationFallback / project-local opt-out）: 未実装（architecture.md の乖離欄と同一）。
 
-未実装のまま残る点: `TaskClassifier` interface、offline report、observation-only mode、budget `manual`/`estimated`、project-local opt-out、hard gate の設定データ化。
+未実装のまま残る点: observation-only mode、budget `manual`/`estimated`、quota state の永続化、project-local opt-out、hard gate の設定データ化。
 
 ## Scope
 
@@ -74,6 +74,8 @@ interface TaskClassifier {
 
 Implement the selected Jev transport behind it. Bound input bytes, use a strict timeout, no retries by default, schema-validate answers, and map unavailable/malformed/low-confidence outcomes to NORMAL. Classifier calls occur once per unpinned session, not on every turn.
 
+**Implemented（2026-09-19）:** `TaskClassifier.classify(input: RedactedTaskSynopsis, signal?)` を policy 側の境界とし、`createJevClassifier(model, timeoutMs)` が Jev transport を実装する。redaction（`createRedactedTaskSynopsis`）は policy 側に残る。
+
 **Exit condition:** fixture tests cover choice mapping, `unclear`, timeout, authentication error, invalid JSON/schema, and cancellation without blocking Pi.
 
 ## Milestone 3 — observability
@@ -90,6 +92,8 @@ For each decision, persist:
 - quota state (`unknown`, `manual`, or `estimated`)
 
 Build `/route status` from these records. Add an offline report command that groups decisions by route, model, cache read/input/output, compactions, classifier error, and fallback rate.
+
+**Implemented（2026-09-19）:** `/route report` は `ctx.sessionManager.getSessionDir()`（現在 project の session ディレクトリ）を走査し、`codex-jev-router-decision` entry を `route`/`source` 別に集計して fallback rate・Jev 呼び出し数・token 合計・平均 confidence/elapsedMs を notify する。cache read/input/output・compaction・classifier error 別の集計は実測段階では research.md §10 の jq 手順で行う（§5 の測定限界）。
 
 **Exit condition:** a test session can be reconstructed without exposing prompt text to the model context or logs.
 

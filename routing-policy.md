@@ -33,7 +33,7 @@ Use one Choice question with `light`, `normal`, `hard`, `very_hard`, and `unclea
 
 Use `unclear` or low confidence as NORMAL. Confidence is distribution concentration, not evidence that an expensive route is warranted. Record answer probabilities if returned, but do not select on a single arbitrary global threshold before calibration.
 
-実装（2026-09-19）: Choice のみで、Nouls は未実装（security/migration 等は keyword hard gate が拾う）。`minimumConfidence: 0.65` を校准前の基線として config に保持する。確率・token usage は decision entry に記録される（commit `c5ca162`。実測は research.md §10）。
+実装（2026-09-19）: Choice のみで、Nouls は未実装（security/migration 等は keyword hard gate が拾う）。分類は `TaskClassifier` 境界（`createJevClassifier`）経由で、prompt は redacted synopsis にのみ渡る（commit `c5ca162`, `6a5113c`）。`minimumConfidence: 0.65` を校准前の基線として config に保持する。確率・token usage は decision entry に記録される（実測は research.md §10）。
 
 ## Candidate models and calibration
 
@@ -53,6 +53,7 @@ Implemented extension commands（2026-09-19、prototype）:
 - `/route once light|normal|hard|very-hard` — affects only the next eligible prompt.
 - `/route reset` — clear pin and pending one-shot override.
 - `/route explain` — show the latest recorded reason, never hidden prompt text.
+- `/route report` — aggregate recorded decisions in the current project's session directory（route/source 別 count、fallback rate、Jev 呼び出し・token 合計・平均 confidence/elapsedMs）; prompt text は出力しない。
 
 The built-in `/model` and `/thinking` remain authoritative manual controls. On a manual model/thinking change, the extension writes a pin entry with source `manual` and does not silently reverse it（実装済み）. This is more predictable than attempting to infer an override from free text.
 
