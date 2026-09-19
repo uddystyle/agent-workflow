@@ -224,3 +224,38 @@ grep -n "interface ExtensionContext\|interface ExtensionCommandContext\|cwd: str
 **設計決定:** project root の `.codex-jev-router.json` に `{ "version": 1, "enabled": false }` があると、そのプロジェクトの**自動経路のみ**を停止する（Jev 分類と keyword hard gate の自動適用。opt-out は「global policy が model を変えてはならない」という明示なので安全 gate も自動適用しない）。明示コマンド（`/route pin|once|auto|reset`）と manual 検出（`model_select`/`thinking_level_select`）は維持し、`/route status` に「project opt-out」を表示する。壊れたマーカー・version 不一致・`enabled: true`・ファイル無しは既定（global policy 有効）。詳細は routing-policy §Project-local opt-out。
 
 **検証:** `tests/codex-jev-router.sh` に純粋関数（`parseProjectOptOut`）と読み取り（`readProjectOptOut`）＋ E2E（opt-out プロジェクトで hard-gate キーワードと Jev 呼び出しが起きない・one-shot は効く・status に opt-out 表示）を追加。**限界:** opt-out 中の security/migration 作業は既定 model のまま（trade-off は routing-policy に明記）。project-local の `enabled: true` override や route 上書きは未実装。出典: 上記ローカル型定義＋ `tests/codex-jev-router.sh` のローカル実測（確認日 2026-09-19）。
+
+## §15. very-hard 有効化判断フォローアップ（2026-09-19）
+
+**目的:** M4 の残件（very-hard 有効化判断）。§12 で「実作業 session の蓄積（`/route report` の gated 集計）を次の stage 判断に用いる」と定めた追跡レビュー。**結論: stage 2 維持（very-hard は gated のまま）。**
+
+**方法:** `~/.pi/agent/sessions/` 配下の全 project session dir を走査し、`codex-jev-router-decision` entry を extension 本体と同じ制約（file >25MB はスキップ・1 dir 最大 300 file）で集計。`/route report` と同じ集計を `aggregateRouteDecisions` で再現した。再現コマンド（検証 2026-09-19）:
+
+```sh
+# 全 session を走査して决策を集計して表示（decision は task hash/bytes のみ・原文なし）
+REPO=$(pwd) node --experimental-strip-types --input-type=module -e '
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+const ext = await import(process.env.REPO + "/home/.pi/agent/extensions/codex-jev-router.ts");
+const dir = join(homedir(), ".pi", "agent", "sessions"); const ds = [];
+for (const d of readdirSync(dir)) { const full = join(dir, d); if (!statSync(full).isDirectory()) continue; let n = 0;
+  for (const name of readdirSync(full)) { if (!name.endsWith(".jsonl")) continue; n += 1; if (n > 300) break;
+    const p = join(full, name); const s = statSync(p); if (!s.isFile() || s.size > 25 * 1024 * 1024) continue;
+    for (const line of readFileSync(p, "utf8").split("\n")) { if (!line.includes("codex-jev-router-decision")) continue;
+      try { const e = JSON.parse(line); if (e?.data?.version === 1) ds.push(e.data); } catch {} } } }
+console.log(JSON.stringify(ext.aggregateRouteDecisions(ds), null, 2));'
+```
+
+**実測結果（確認日 2026-09-19、全 ten project session dir 走査）:**
+
+| 対象 | 件数 | 内容 |
+|---|---|---|
+| decision 合計 | 5 | 全て 2026-09-18・pre-fix（jev/gating 記録なし） |
+| agent-workflow-main | 4 | normal fallback 2・light auto 2（09-18 12:04–12:13） |
+| judge-app | 1 | normal fallback（09-18 12:15、TYPESAFE_API_KEY なし）。file 55.9MB で `buildRouteReport` の 25MB 上限により集計対象外（§12 と同一） |
+| **stage 2 適用後（09-19）の積み増し** | **0** | gated decision・very-hard 提案も 0 |
+
+**なぜ 0 か:** agent-workflow-main の最新 session（09-18T12:12Z 開始・09-19T04:27Z まで継続）は 09-18 12:13 の **auto-light pin**（source `auto`）が session 内で有効なままで、09-19 の prompt は `state.pin` により再分類されない（「Choose once. Stay pinned.」の正しい挙動）。つまり未使用ではなく、pin 継続により auto 経路が再発火していない。
+
+**決定:** very-hard 有効化の判断材料（実 session の gated 集計）がまだ 0 収集。§11/§12 の Jev 非決定性（very-hard 相当タスクで conf 0.47–0.96）と keyword hard gate の独立補完の分析は変わらず、**前進の根拠なし → stage 2（`enabledRoutes: ["light", "hard"]`）を維持**。次回は (a) unpinned の実 session で再分類が発生し decision が積まれた時、または (b) gated（suggested very-hard）が実測された時点でレビューする。出典: 上記ローカル実測（再現コマンド・確認日）。**限界:** pin 継続により auto 経路が発火しない間はデータが増えない。意図的に unpinned で作業しない限り、判断には時間がかかる。
