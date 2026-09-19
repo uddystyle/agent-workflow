@@ -565,6 +565,140 @@ export function createJevClassifier(model: string, timeoutMs: number): TaskClass
   };
 }
 
+// ---------------------------------------------------------------------------
+// Handoff verification (Noul) — consult boundary for handoff docs (handoff skill §7).
+// Same transport pattern as TaskClassifier, but asks four independent Noul
+// questions in one request. Observation-only: nothing here changes routing.
+// ---------------------------------------------------------------------------
+
+/** Bounded verifier input: the handoff text is truncated to 8,000 chars; only hash/bytes of the full text are retained for records. */
+export type RedactedHandoffSynopsis = { text: string; byteLength: number; sha256: string };
+
+/** One Noul verification of a handoff document; each field is the probability the criterion holds. */
+export type HandoffVerification = {
+  /** 次に何をするかが一文で言える（handoff skill §7-1）。 */
+  nextAction: number;
+  /** 触ると壊れるものが名前で言える（§7-2）。 */
+  fragileAreas: number;
+  /** 判断待ちになっているものが言える（§7-3）。 */
+  pendingDecisions: number;
+  /** 秘密の値が文字列として含まれていない（§4）。高いほど安全。 */
+  noSecretValue: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  elapsedMs: number;
+};
+
+/** Policy-independent verifier boundary so callers do not depend on the Jev transport. */
+export interface HandoffVerifier {
+  verify(input: RedactedHandoffSynopsis, signal?: AbortSignal): Promise<HandoffVerification>;
+}
+
+/** Redacts a handoff doc into a bounded verifier input; the original text is never persisted. */
+export function createRedactedHandoffSynopsis(text: string): RedactedHandoffSynopsis {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const snippet = normalized.slice(0, 8_000);
+  return {
+    text: snippet,
+    byteLength: Buffer.byteLength(snippet),
+    sha256: createHash("sha256").update(normalized).digest("hex"),
+  };
+}
+
+/** Converts a TypeSafe System One Noul response into the handoff criterion probabilities. */
+export function parseHandoffNoulAnswers(value: unknown, elapsedMs: number): HandoffVerification {
+  if (!isRecord(value) || !isRecord(value.answers)) throw new Error("codex-jev-router: Jev handoff response has no answers.");
+  const answers = value.answers;
+  const readNoul = (id: "next_action" | "fragile_areas" | "pending_decisions" | "no_secret_value"): number => {
+    const answer = isRecord(answers[id]) ? answers[id] : undefined;
+    const p = answer?.noul;
+    if (typeof p !== "number" || p < 0 || p > 1) throw new Error("codex-jev-router: Jev handoff Noul answer is malformed.");
+    return p;
+  };
+  const usage = isRecord(value.usage) ? value.usage : undefined;
+  return {
+    nextAction: readNoul("next_action"),
+    fragileAreas: readNoul("fragile_areas"),
+    pendingDecisions: readNoul("pending_decisions"),
+    noSecretValue: readNoul("no_secret_value"),
+    inputTokens: numberOrUndefined(usage?.input_tokens),
+    outputTokens: numberOrUndefined(usage?.output_tokens),
+    elapsedMs,
+  };
+}
+
+/** Display threshold for /status 相当の要約。閾値は校准ハーネス（handoff-verify.sh --calibrate）の実測で決める。 */
+export const HANDOFF_VERIFY_DEFAULT_THRESHOLD = 0.7;
+
+/** Pure display/verdict helper: per-criterion probability with a weak mark at the given threshold. */
+export function formatHandoffVerification(v: HandoffVerification, threshold = HANDOFF_VERIFY_DEFAULT_THRESHOLD): string {
+  const criteria: [string, number][] = [
+    ["next action", v.nextAction],
+    ["fragile areas", v.fragileAreas],
+    ["pending decisions", v.pendingDecisions],
+    ["no secret value", v.noSecretValue],
+  ];
+  return criteria.map(([name, p]) => `${name}: ${Math.round(p * 100)}%${p >= threshold ? "" : " (weak)"}`).join(" · ");
+}
+
+/** Builds the Noul handoff-verification transport behind the HandoffVerifier boundary. */
+export function createJevHandoffVerifier(model: string, timeoutMs: number): HandoffVerifier {
+  return {
+    async verify(input, signal) {
+      const apiKey = process.env.TYPESAFE_API_KEY?.trim();
+      if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
+      const timeout = AbortSignal.timeout(timeoutMs);
+      const combined = AbortSignal.any([signal ?? new AbortController().signal, timeout]);
+      const startedAt = performance.now();
+      const response = await fetch("https://api.typesafe.ai/v1/systemone", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          model,
+          state: { handoff: input.text },
+          questions: {
+            next_action: {
+              type: "noul",
+              instructions: "The handoff states the concrete next action for the receiving session in one readable sentence.",
+              criteria: {
+                true: "Names the concrete next action (what to do next, not just past work or inventory).",
+                false: "Describes only past work, context, or items that exist; the next action is absent or only implied.",
+              },
+            },
+            fragile_areas: {
+              type: "noul",
+              instructions: "The handoff names what breaks or must not be touched next (files, modules, invariants, credentials).",
+              criteria: {
+                true: "Points to specific areas with a reason or warning (e.g. do not touch X because Y).",
+                false: "No fragile area is named, or only generic advice is given.",
+              },
+            },
+            pending_decisions: {
+              type: "noul",
+              instructions: "The handoff names what is waiting for a decision.",
+              criteria: {
+                true: "States an open decision, what or who it waits on, or the condition that resolves it.",
+                false: "No open decision is stated.",
+              },
+            },
+            no_secret_value: {
+              type: "noul",
+              instructions: "The handoff contains no literal secret value: no API key, token, password, OAuth secret, PII, or customer content. Naming where such values live (e.g. .env STRIPE_SECRET_KEY) is allowed.",
+              criteria: {
+                true: "Contains no readable secret value or personal/customer content; only names of locations.",
+                false: "Contains a literal secret value or personal/customer content.",
+              },
+            },
+          },
+        }),
+        signal: combined,
+      });
+      if (!response.ok) throw new Error(`codex-jev-router: Jev request failed with HTTP ${response.status}.`);
+      return parseHandoffNoulAnswers(await response.json(), Math.round(performance.now() - startedAt));
+    },
+  };
+}
+
 export default function codexJevRouter(pi: ExtensionAPI): void {
   let globalConfig: RouterConfig | undefined;
   let config: RouterConfig | undefined; // effective for the current session (global + project overrides)

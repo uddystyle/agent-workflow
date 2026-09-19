@@ -324,3 +324,39 @@ bash tests/codex-jev-router.sh      # 全スイートでの実行は `for test i
 **session 状況:** agent-workflow-main の最新 session（2026-09-18T12-12-02Z 開始）の最終書き込みは 09-19T13:27 のままで、§15 と同じ **auto-light pin** 継続による再分類なし。09-20 時点で新規 decision の書き込みはない（進行中 session は shutdown まで flush されない点は §15 と同一の前提）。
 
 **決定:** §15 の次回レビュー条件 (a) unpinned 実 session で decision が積まれる、(b) gated（suggested very-hard）が実測される、の**いずれも未発生**。§11 の Jev 非決定性と §12 の keyword hard gate の独立補完の分析は不変で、**前進の根拠なし → stage 2（`enabledRoutes: ["light", "hard"]`）を維持**。次回レビュー契機も §15 と同じ (a)/(b)。出典: 上記ローカル実測（§15 の再現コマンド・確認日 2026-09-20）。**限界:** §15 と同一——pin 継続により auto 経路が再発火しない間はデータが増えず、意図的に unpinned で作業しない限り判断には時間がかかる。
+
+## §19. Handoff 検証（Jev Noul・consult boundary）（2026-09-20）
+
+**目的:** Jev を router 以外のワークフローへ「生成でなく判断」で使う第一弾。handoff skill §7 のリリース基準（次に何をするか / 触ると壊れるもの / 判断待ち）＋ §4 の秘密なしを、受渡し前に機械検証する。**判定は人がする**（consult 扱い——検証は何も route を変えない）。
+
+**API 確認（一次資料）:** TypeSafe System One の **Noul** は yes/no の確率 `noul` を返し、choice と違い独立した confidence は無い（~0.5 は yes/no 同確率であり medium 強度ではない）。`questions.<id> = {type:"noul", instructions, criteria?:{true,false}}`、response は `answers.<id> = {type:"noul", noul}` + `usage.{input_tokens, output_tokens}`。複数問題は同一 state で 1 request にまとめ並列評価できる。出典: <https://docs.typesafe.ai/primitives/noul.md>（確認日 2026-09-20）。
+
+**設計決定:**
+- `HandoffVerifier` 境界 + `createJevHandoffVerifier(model, timeoutMs)`——TaskClassifier と同じ transport（`POST /v1/systemone`・strict timeout・no retry・fail-open）で、state を `{handoff}`、4 問を 1 request の Noul で投げる。
+- 4 基準: `next_action`（§7-1 次に何をするか）/ `fragile_areas`（§7-2 触ると壊れるもの）/ `pending_decisions`（§7-3 判断待ち）/ `no_secret_value`（§4 秘密の値が文字列として無い——高いほど安全）。
+- `createRedactedHandoffSynopsis`——8,000 char で切り、全文の sha256 + 切った分の byteLength を記録。原文は永続しない（router の `createRedactedTaskSynopsis` と同型）。
+- `formatHandoffVerification` は表示のみ。`HANDOFF_VERIFY_DEFAULT_THRESHOLD = 0.7`（下記実測で 0.55–0.90 帯が 100%）。
+- 実用: `bash handoff-verify.sh <handoff-file>`。校准: `bash handoff-verify.sh --calibrate`（observation-only）。
+
+**実測（確認日 2026-09-20、model `jev-1.13.0`・ラベル付き代表 5 文書 × 4 基準、1 request ごとに 670–800 in / 77 out tokens）:**
+
+| doc | next | fragile | pending | secret | 期待（ラベル） |
+|---|---|---|---|---|---|
+| good | 91% | 98% | 98% | 97% | 全 true |
+| missing_next_action | 6% | 4% | 4% | 96% | next/frag/pend false、secret true |
+| missing_fragile | 92% | **52%** | 97% | 95% | frag false |
+| missing_pending | 91% | 97% | **40%** | 97% | pend false |
+| has_secret | 93% | 28% | 27% | **2%** | secret false |
+
+- **閾値スイープ: 0.55–0.90 で全基準・passAll の一致率 100%（5/5）。** 0.50 は fragile が漏れる（0.52 ≥ 0.50）、0.95 は good の next（0.91）が落ちる。既定 0.7 は 100% 帯の中央。
+- 基準ごとの分離は明瞭で、秘密なし（2%→flagged）が最も鋭い。**fragile の欠落は他より柔らかい（0.52）**ため、実運用では 0.7 未満を weak と扱う既定で拾えるが、基準別閾値の余地は残る。
+
+**再現コマンド:**
+```sh
+zsh -i -c 'cd <repo>/main && bash handoff-verify.sh --calibrate'   # 校准（ラベル付き 5 文書 + 閾値スイープ）· 要 interactive zsh の TYPESAFE_API_KEY
+bash handoff-verify.sh /path/to/handoff                            # 実用: 1 枚を検証
+for test in tests/*.sh; do bash "$test" || exit; done              # 全スイート（fetch スタブ・外部通信なし）
+```
+型チェック（一時 tsconfig、§17 と同一手順）PASS。
+
+**限界:** fixture は 5 文書（20 判定）で小規模。fragile の 0.52 は既定閾値では weak に拾えるがマージンが薄い。検証は consult 扱いで、skill には「任意・補助」として載せた（§7 参照。判定は人がする）。8,000 char を超える handoff は末尾が切れて「無い」と誤判定し得る（追加 calibration 対象）。出典: 上記 docs.typesafe.ai/primitives/noul の一次資料＋ローカル実測（確認日 2026-09-20）。

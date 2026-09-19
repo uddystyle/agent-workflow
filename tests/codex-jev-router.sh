@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Codex/Jev router が明示 override と Jev 経路（fetch スタブ）で route を適用し、decision を session に残す。
 # Jev 経路では適用成功時も judgment（confidence・token usage）が decision に残ることまで検証する。
-# さらに TaskClassifier 境界（createJevClassifier）、BudgetManager / GenerationFallback 境界、
+# さらに TaskClassifier 境界（createJevClassifier）、HandoffVerifier 境界（Noul 4 問・createJevHandoffVerifier）、
+# BudgetManager / GenerationFallback 境界、
 # /route report の集計・走査、project-local config（opt-out / enabled override / route 上書き）を検証する。
 set -euo pipefail
 
@@ -103,6 +104,46 @@ assert.equal(requestBody.questions.route.type, "choice");
 // 不正な answer は明示エラーで失敗する。
 globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { route: { choice: "light" } } }) });
 await assert.rejects(classifier.classify({ task: "hi", byteLength: 2, sha256: "z" }), /malformed/);
+
+// Handoff verifier 境界: Noul 4 問を 1 request で送り、基準ごとの probability を返す。
+const handoffVerifier = extension.createJevHandoffVerifier("jev-1.13.0", 5000);
+delete process.env.TYPESAFE_API_KEY;
+await assert.rejects(handoffVerifier.verify({ text: "hi", byteLength: 2, sha256: "z" }), /TYPESAFE_API_KEY is not configured/);
+process.env.TYPESAFE_API_KEY = "router-test-key";
+let handoffRequest;
+globalThis.fetch = async (url, options) => {
+  handoffRequest = { url, options };
+  return { ok: true, json: async () => ({ answers: { next_action: { type: "noul", noul: 0.95 }, fragile_areas: { type: "noul", noul: 0.9 }, pending_decisions: { type: "noul", noul: 0.21 }, no_secret_value: { type: "noul", noul: 0.88 } }, usage: { input_tokens: 512, output_tokens: 40 } }) };
+};
+const handoffSynopsis = extension.createRedactedHandoffSynopsis("次の一手: push して PR。触ると壊れるもの: config.ts。判断待ち: push はユーザー確認。" + "x".repeat(3_000));
+const handoffV = await handoffVerifier.verify(handoffSynopsis);
+assert.equal(handoffV.nextAction, 0.95);
+assert.equal(handoffV.fragileAreas, 0.9);
+assert.equal(handoffV.pendingDecisions, 0.21);
+assert.equal(handoffV.noSecretValue, 0.88);
+assert.equal(handoffV.inputTokens, 512);
+assert.equal(handoffV.outputTokens, 40);
+const handoffBody = JSON.parse(handoffRequest.options.body);
+assert.equal(handoffBody.model, "jev-1.13.0");
+assert.equal(handoffBody.state.handoff, handoffSynopsis.text);
+assert.equal(handoffBody.questions.next_action.type, "noul");
+assert.equal(handoffBody.questions.fragile_areas.type, "noul");
+assert.equal(handoffBody.questions.pending_decisions.type, "noul");
+assert.equal(handoffBody.questions.no_secret_value.type, "noul");
+const handoffLine = extension.formatHandoffVerification(handoffV);
+assert.ok(handoffLine.includes("next action: 95%"), "基準ごとの表示");
+assert.ok(handoffLine.includes("pending decisions: 21% (weak)"), "低 probability 基準が weak と出る");
+assert.equal(extension.formatHandoffVerification(handoffV, 0.9).includes("next action: 95% (weak)"), false, "閾値指定で weak 判定が変わる");
+// redaction: 8,000 char で切る・byteLength は切った分・sha256 は全文から。
+const longHandoff = "助".repeat(12_000);
+const bounded = extension.createRedactedHandoffSynopsis(longHandoff);
+assert.ok(bounded.text.length <= 8000, "8,000 char で切られる");
+assert.equal(bounded.byteLength, Buffer.byteLength(bounded.text));
+assert.equal(bounded.sha256.length, 64);
+assert.notEqual(bounded.sha256, extension.createRedactedHandoffSynopsis(longHandoff + "!").sha256, "全文の sha256 が変わる");
+// 不正な Noul answer（noul 欠落）は明示エラーで失敗する。
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { next_action: { type: "noul", noul: 0.9 } } }) });
+await assert.rejects(handoffVerifier.verify({ text: "x", byteLength: 1, sha256: "s" }), /malformed/);
 
 // 純粋集計: aggregateRouteDecisions。
 const aggregated = extension.aggregateRouteDecisions([
