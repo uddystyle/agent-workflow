@@ -162,27 +162,39 @@ assert.equal(gateDecision.source, "hard-gate");
 assert.equal(gateDecision.routeId, "hard");
 assert.equal(gateDecision.task.hardGate, true);
 
-// Guarded rollout: stage 1 は Jev 提案の light のみ有効化し、hard/very-hard 提案を normal へ落とす。
-assert.equal(realConfig.rollout.enabledRoutes.length, 1);
-assert.equal(realConfig.rollout.enabledRoutes[0], "light");
+// Guarded rollout: stage 2 は Jev 提案の light と hard を有効化し、very-hard 提案のみ normal へ落とす。
+assert.equal(realConfig.rollout.enabledRoutes.length, 2);
+assert.deepEqual([...realConfig.rollout.enabledRoutes].sort(), ["hard", "light"]);
 assert.throws(() => extension.parseCodexRouterConfig({ ...realConfig, rollout: { enabledRoutes: "light" } }), /rollout/);
 assert.throws(() => extension.parseCodexRouterConfig({ ...realConfig, rollout: { enabledRoutes: ["hard-x"] } }), /rollout/);
-assert.deepEqual(extension.applyRolloutGate("light", ["light"]), { routeId: "light", suggestedRouteId: "light", gated: false });
-assert.deepEqual(extension.applyRolloutGate("normal", ["light"]), { routeId: "normal", suggestedRouteId: "normal", gated: false });
+assert.deepEqual(extension.applyRolloutGate("light", ["light", "hard"]), { routeId: "light", suggestedRouteId: "light", gated: false });
+assert.deepEqual(extension.applyRolloutGate("normal", ["light", "hard"]), { routeId: "normal", suggestedRouteId: "normal", gated: false });
 assert.deepEqual(extension.applyRolloutGate("hard", ["light"]), { routeId: "normal", suggestedRouteId: "hard", gated: true });
+assert.deepEqual(extension.applyRolloutGate("hard", ["light", "hard"]), { routeId: "hard", suggestedRouteId: "hard", gated: false });
 assert.deepEqual(extension.applyRolloutGate("very-hard", ["light", "hard"]), { routeId: "normal", suggestedRouteId: "very-hard", gated: true });
 assert.deepEqual(extension.applyRolloutGate("hard", []), { routeId: "normal", suggestedRouteId: "hard", gated: true });
-// E2E: Jev が hard を提案しても stage 1 では normal（terra/medium）が適用され、decision に gating が残る。
+// E2E: stage 2 では Jev が hard を提案すると astra/high が適用される（gated にならない）。
 process.env.TYPESAFE_API_KEY = "router-test-key";
 globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { route: { choice: "hard", confidence: 0.9 } }, usage: { input_tokens: 273, output_tokens: 20 } }) });
 await command.handler("auto", ctx);
 await handlers.get("before_agent_start")({ prompt: "Redesign the plan runner module boundary." }, ctx);
+assert.equal(ctx.model.id, "gpt-6-astra");
+assert.equal(thinking, "high");
+const hardDecision = entries.findLast((entry) => entry.customType === "codex-jev-router-decision").data;
+assert.equal(hardDecision.source, "auto");
+assert.equal(hardDecision.routeId, "hard");
+assert.equal(hardDecision.suggestedRouteId, undefined);
+assert.equal(hardDecision.rolloutGate, undefined);
+// very-hard 提案は stage 2 でも normal へ落ち、decision に gating が残る。
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { route: { choice: "very-hard", confidence: 0.9 } }, usage: { input_tokens: 273, output_tokens: 20 } }) });
+await command.handler("auto", ctx);
+await handlers.get("before_agent_start")({ prompt: "Plan the cross-service rollout sequencing." }, ctx);
 assert.equal(ctx.model.id, "gpt-5.6-terra");
 assert.equal(thinking, "medium");
 const gatedDecision = entries.findLast((entry) => entry.customType === "codex-jev-router-decision").data;
 assert.equal(gatedDecision.source, "auto");
 assert.equal(gatedDecision.routeId, "normal");
-assert.equal(gatedDecision.suggestedRouteId, "hard");
+assert.equal(gatedDecision.suggestedRouteId, "very-hard");
 assert.equal(gatedDecision.rolloutGate, true);
 // 適用された light 提案は gated にならない。
 globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { route: { choice: "light", confidence: 0.9 } }, usage: { input_tokens: 100, output_tokens: 10 } }) });

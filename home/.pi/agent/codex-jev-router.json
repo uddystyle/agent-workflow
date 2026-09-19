@@ -40,7 +40,7 @@
     ]
   },
   "rollout": {
-    "enabledRoutes": ["light"]
+    "enabledRoutes": ["light", "hard"]
   },
   "jev": {
     "model": "jev-1.13.0",
