@@ -258,7 +258,7 @@ console.log(JSON.stringify(ext.aggregateRouteDecisions(ds), null, 2));'
 
 **なぜ 0 か:** agent-workflow-main の最新 session（09-18T12:12Z 開始・09-19T04:27Z まで継続）は 09-18 12:13 の **auto-light pin**（source `auto`）が session 内で有効なままで、09-19 の prompt は `state.pin` により再分類されない（「Choose once. Stay pinned.」の正しい挙動）。つまり未使用ではなく、pin 継続により auto 経路が再発火していない。
 
-**決定:** very-hard 有効化の判断材料（実 session の gated 集計）がまだ 0 収集。§11/§12 の Jev 非決定性（very-hard 相当タスクで conf 0.47–0.96）と keyword hard gate の独立補完の分析は変わらず、**前進の根拠なし → stage 2（`enabledRoutes: ["light", "hard"]`）を維持**。次回は (a) unpinned の実 session で再分類が発生し decision が積まれた時、または (b) gated（suggested very-hard）が実測された時点でレビューする。出典: 上記ローカル実測（再現コマンド・確認日）。**限界:** pin 継続により auto 経路が発火しない間はデータが増えない。意図的に unpinned で作業しない限り、判断には時間がかかる。
+**決定:** very-hard 有効化の判断材料（実 session の gated 集計）がまだ 0 収集。§11/§12 の Jev 非決定性（very-hard 相当タスクで conf 0.47–0.96）と keyword hard gate の独立補完の分析は変わらず、**前進の根拠なし → stage 2（`enabledRoutes: ["light", "hard"]`）を維持**。次回は (a) unpinned の実 session で再分類が発生し decision が積まれた時、または (b) gated（suggested very-hard）が実測された時点でレビューする。出典: 上記ローカル実測（再現コマンド・確認日）。**限界:** pin 継続により auto 経路が発火しない間はデータが増えない。意図的に unpinned で作業しない限り、判断には時間がかかる。→ 2026-09-20 の追跡レビューは **§18**。
 
 ## §16. Project-local config override 層（enabled override / route 上書き）（2026-09-19）
 
@@ -306,3 +306,21 @@ bash tests/codex-jev-router.sh      # 全スイートでの実行は `for test i
 型チェック（一時 tsconfig: module esnext / moduleResolution bundler / strict / skipLibCheck / typeRoots=Pi pkg の node_modules/@types / paths=`@earendil-works/pi-coding-agent`→Pi dist/index.d.ts）PASS。全テストスイート PASS（確認日 2026-09-19）。
 
 **限界:** GenerationFallback は seam のみで MVP に実効なし（登録経路なし・routing 意味論不変）。`authoritative` state・nudge-down・API-key OpenAI fallback の有効化は引き続き未実装。module-level の `fallback` 変数は `GenerationFallback<any>`（未来の具象 model 型が挿せるための緩い型、MVP では恒に undefined）。出典: ローカル Pi 型定義（`$(npm root -g)/@earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts:1006` `setModel(model: Model<any>)`・`dist/core/model-registry.d.ts:28` `find(): Model<Api> | undefined`、確認日 2026-09-19）＋ `tests/codex-jev-router.sh` のローカル実測。
+
+## §18. very-hard 有効化判断フォローアップ 2（2026-09-20）
+
+**目的:** §15 の定期追跡レビュー（ユーザー指示）。§15 の再現コマンドを同一制約で再実行し、very-hard 有効化の判断材料（実 session の gated 集計）が蓄積されたかを確認する。**結論: stage 2 維持（very-hard は gated のまま）。** 再現コマンドは §15 と同一（`aggregateRouteDecisions` による全 session dir 走査・file >25MB スキップ・1 dir 最大 300 file）。検証 2026-09-20。
+
+**実測結果（確認日 2026-09-20、全 project session dir 走査）:**
+
+| 対象 | 件数 | 内容 |
+|---|---|---|
+| decision 合計 | 4 | 全て 2026-09-18・pre-fix（§15 と同値、agent-workflow-main のみ） |
+| agent-workflow-main | 4 | normal fallback 2・light auto 2（09-18 12:04–12:13） |
+| judge-app | 1 | normal fallback（§15 と同じく file 55.9MB で 25MB 上限により集計対象外） |
+| **前回レビュー（09-19）からの積み増し** | **0** | gated decision・very-hard 提案・jevCalls すべて 0 |
+| rolloutGatedCount | 0 | suggested very-hard の実測は依然なし |
+
+**session 状況:** agent-workflow-main の最新 session（2026-09-18T12-12-02Z 開始）の最終書き込みは 09-19T13:27 のままで、§15 と同じ **auto-light pin** 継続による再分類なし。09-20 時点で新規 decision の書き込みはない（進行中 session は shutdown まで flush されない点は §15 と同一の前提）。
+
+**決定:** §15 の次回レビュー条件 (a) unpinned 実 session で decision が積まれる、(b) gated（suggested very-hard）が実測される、の**いずれも未発生**。§11 の Jev 非決定性と §12 の keyword hard gate の独立補完の分析は不変で、**前進の根拠なし → stage 2（`enabledRoutes: ["light", "hard"]`）を維持**。次回レビュー契機も §15 と同じ (a)/(b)。出典: 上記ローカル実測（§15 の再現コマンド・確認日 2026-09-20）。**限界:** §15 と同一——pin 継続により auto 経路が再発火しない間はデータが増えず、意図的に unpinned で作業しない限り判断には時間がかかる。
