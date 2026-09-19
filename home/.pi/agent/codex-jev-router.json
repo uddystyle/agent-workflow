@@ -42,6 +42,11 @@
   "rollout": {
     "enabledRoutes": ["light", "hard"]
   },
+  "budget": {
+    "mode": "unknown",
+    "windowHours": 168,
+    "softLimitTokens": 0
+  },
   "jev": {
     "model": "jev-1.13.0",
     "timeoutMs": 5000,

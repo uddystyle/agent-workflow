@@ -38,6 +38,10 @@ const pi = {
   getThinkingLevel() { return thinking; },
 };
 
+// quota state はテスト用の一時パスへ永続化する（default() 実行前に設定）。
+process.env.CODEX_JEV_ROUTER_QUOTA_PATH = join(tmpdir(), "router-quota-state-test.json");
+rmSync(process.env.CODEX_JEV_ROUTER_QUOTA_PATH, { force: true });
+
 extension.default(pi);
 await handlers.get("session_start")({}, ctx);
 await command.handler("once light", ctx);
@@ -215,6 +219,51 @@ assert.equal(gatedAggregate.rolloutGatedCount, 2);
 assert.deepEqual(gatedAggregate.rolloutGatedSuggested, { hard: 1, "very-hard": 1 });
 assert.equal(gatedAggregate.byRoute.normal, 2);
 assert.equal(gatedAggregate.bySource.auto, 3);
+
+// quota state: 設定データ化した budget。config 検証・純粋ヘルパー・turn_end の E2E。
+assert.equal(realConfig.budget.mode, "unknown");
+assert.equal(realConfig.budget.windowHours, 168);
+assert.throws(() => extension.parseCodexRouterConfig({ ...realConfig, budget: { mode: "bogus", windowHours: 168, softLimitTokens: 0 } }), /budget/);
+assert.throws(() => extension.parseCodexRouterConfig({ ...realConfig, budget: { mode: "manual", windowHours: 0, softLimitTokens: 0 } }), /budget/);
+assert.throws(() => extension.parseCodexRouterConfig({ ...realConfig, budget: { mode: "manual", windowHours: 168, softLimitTokens: -1 } }), /budget/);
+const created = extension.createQuotaState("estimated", 168, 50_000, 1_700_000_000_000);
+assert.equal(created.reportedTurns, 0);
+assert.ok(Date.parse(created.windowEnd) - Date.parse(created.windowStart) === 168 * 3_600_000, "window length");
+const rotated = extension.rotateQuotaState(created, 168, Date.parse(created.windowEnd) + 1);
+assert.notEqual(rotated.windowStart, created.windowStart);
+assert.equal(rotated.reportedTurns, 0);
+assert.equal(extension.rotateQuotaState(created, 168, Date.parse(created.windowStart) + 1), created);
+const recorded = extension.recordGenerationUsage(created, { input: 1000, output: 200, cacheRead: 500 });
+assert.equal(recorded.reportedTurns, 1);
+assert.equal(recorded.reportedInputTokens, 1000);
+assert.equal(recorded.reportedCacheReadTokens, 500);
+const jevTracked = extension.recordJevUsage(created, 273, 20);
+assert.equal(jevTracked.jevCalls, 1);
+assert.equal(jevTracked.jevInputTokens, 273);
+assert.equal(jevTracked.jevOutputTokens, 20);
+assert.equal(extension.formatQuotaLine(undefined), "quota unknown");
+assert.equal(extension.formatQuotaLine(extension.createQuotaState("unknown", 168, 0)), "quota unknown");
+assert.ok(extension.formatQuotaLine(extension.createQuotaState("manual", 168, 100_000)).includes("quota manual (non-authoritative local estimate)"));
+assert.ok(extension.formatQuotaLine(extension.createQuotaState("estimated", 168, 0)).includes("soft limit") === false);
+assert.ok(extension.formatQuotaLine(extension.createQuotaState("manual", 168, 100_000)).includes("soft limit 100000"));
+// 壊れた状態ファイルは undefined と読まれ、ルーティングは壊れない。
+const quotaPath = process.env.CODEX_JEV_ROUTER_QUOTA_PATH;
+writeFileSync(quotaPath, "{not-json");
+assert.equal(extension.readQuotaState(quotaPath), undefined);
+// turn_end の generation usage が quota ファイルに積まれる。
+await handlers.get("turn_end")({ message: { usage: { input: 5000, output: 300, cacheRead: 1000 } } }, ctx);
+await handlers.get("turn_end")({ message: { usage: { input: 2500, output: 150 } } }, ctx);
+const afterTurn = JSON.parse(readFileSync(quotaPath, "utf8"));
+assert.equal(afterTurn.mode, "unknown");
+assert.equal(afterTurn.reportedTurns, 2);
+assert.equal(afterTurn.reportedInputTokens, 7500);
+assert.equal(afterTurn.reportedOutputTokens, 450);
+assert.equal(afterTurn.reportedCacheReadTokens, 1000);
+assert.ok(afterTurn.jevCalls >= 1, `Jev decision が quota に蓄積される（${afterTurn.jevCalls} calls）`);
+// /route status は quota 行を出す。
+await command.handler("status", ctx);
+assert.ok(notifications.some((n) => n.message.startsWith("Codex router:") && n.message.includes("quota")), "status に quota 行");
+rmSync(quotaPath, { force: true });
 NODE
 
 printf 'PASS codex Jev router TaskClassifier report\n'

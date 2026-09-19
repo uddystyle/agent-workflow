@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -12,6 +13,23 @@ const ROUTER_VERSION = 1;
 export type CodexRouteId = "light" | "normal" | "hard" | "very-hard";
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 type RouteSource = "auto" | "one-shot" | "pin" | "hard-gate" | "fallback" | "manual";
+type BudgetMode = "unknown" | "manual" | "estimated";
+
+/** Persisted local quota state. Stored outside the repository in ~/.pi/agent. */
+type QuotaState = {
+  version: 1;
+  mode: BudgetMode;
+  windowStart: string;
+  windowEnd: string;
+  reportedInputTokens: number;
+  reportedOutputTokens: number;
+  reportedCacheReadTokens: number;
+  reportedTurns: number;
+  jevCalls: number;
+  jevInputTokens: number;
+  jevOutputTokens: number;
+  softLimitTokens: number;
+};
 
 type ModelRoute = {
   provider: string;
@@ -25,6 +43,7 @@ type RouterConfig = {
   fallbackRoute: CodexRouteId;
   hardGate: { patterns: string[] };
   rollout: { enabledRoutes: CodexRouteId[] };
+  budget: { mode: BudgetMode; windowHours: number; softLimitTokens: number };
   jev: { model: string; timeoutMs: number; minimumConfidence: number };
 };
 
@@ -104,11 +123,12 @@ export function parseCodexRouterConfig(value: unknown): RouterConfig {
   }
   if (!isRouteId(value.fallbackRoute) || !isRecord(value.hardGate) || !isStringArray(value.hardGate.patterns)
     || !isRecord(value.rollout) || !isRouteIdArray(value.rollout.enabledRoutes)
+    || !isRecord(value.budget) || !isBudgetMode(value.budget.mode) || !isPositiveInteger(value.budget.windowHours) || !isNonNegativeInteger(value.budget.softLimitTokens)
     || typeof value.jev.model !== "string" || !isPositiveInteger(value.jev.timeoutMs)
     || typeof value.jev.minimumConfidence !== "number" || value.jev.minimumConfidence < 0 || value.jev.minimumConfidence > 1) {
-    throw new Error("codex-jev-router: fallbackRoute, hardGate, rollout, or jev settings are invalid.");
+    throw new Error("codex-jev-router: fallbackRoute, hardGate, rollout, budget, or jev settings are invalid.");
   }
-  return { version: 1, routes, fallbackRoute: value.fallbackRoute, hardGate: { patterns: value.hardGate.patterns }, rollout: { enabledRoutes: value.rollout.enabledRoutes }, jev: { model: value.jev.model, timeoutMs: value.jev.timeoutMs, minimumConfidence: value.jev.minimumConfidence } };
+  return { version: 1, routes, fallbackRoute: value.fallbackRoute, hardGate: { patterns: value.hardGate.patterns }, rollout: { enabledRoutes: value.rollout.enabledRoutes }, budget: { mode: value.budget.mode, windowHours: value.budget.windowHours, softLimitTokens: value.budget.softLimitTokens }, jev: { model: value.jev.model, timeoutMs: value.jev.timeoutMs, minimumConfidence: value.jev.minimumConfidence } };
 }
 
 /** Compiles configured keywords into a deterministic matcher (whole-word, case-insensitive). */
@@ -268,6 +288,91 @@ function formatCounts(counts: Record<string, number>): string {
   return entries.length === 0 ? "none" : entries.map(([key, count]) => `${key} ${count}`).join(" · ");
 }
 
+/** Machine-local quota state path; default lives outside the repository, next to the Pi config dir. */
+export function quotaStatePath(): string {
+  return process.env.CODEX_JEV_ROUTER_QUOTA_PATH ?? join(homedir(), ".pi", "agent", "codex-jev-router-quota.json");
+}
+
+/** Starts a fresh quota window. */
+export function createQuotaState(mode: BudgetMode, windowHours: number, softLimitTokens: number, now = Date.now()): QuotaState {
+  return {
+    version: 1,
+    mode,
+    windowStart: new Date(now).toISOString(),
+    windowEnd: new Date(now + windowHours * 3_600_000).toISOString(),
+    reportedInputTokens: 0,
+    reportedOutputTokens: 0,
+    reportedCacheReadTokens: 0,
+    reportedTurns: 0,
+    jevCalls: 0,
+    jevInputTokens: 0,
+    jevOutputTokens: 0,
+    softLimitTokens,
+  };
+}
+
+/** Advances to a new zeroed window once the current window has ended; otherwise returns the state unchanged. */
+export function rotateQuotaState(state: QuotaState, windowHours: number, now = Date.now()): QuotaState {
+  if (Date.parse(state.windowEnd) > now) return state;
+  return createQuotaState(state.mode, windowHours, state.softLimitTokens, now);
+}
+
+/** Accumulates one assistant generation turn's provider-reported usage. */
+export function recordGenerationUsage(state: QuotaState, usage: { input: number; output: number; cacheRead?: number }): QuotaState {
+  return {
+    ...state,
+    reportedInputTokens: state.reportedInputTokens + usage.input,
+    reportedOutputTokens: state.reportedOutputTokens + usage.output,
+    reportedCacheReadTokens: state.reportedCacheReadTokens + (usage.cacheRead ?? 0),
+    reportedTurns: state.reportedTurns + 1,
+  };
+}
+
+/** Accumulates one Jev classifier call into the same window. */
+export function recordJevUsage(state: QuotaState, inputTokens: number | undefined, outputTokens: number | undefined): QuotaState {
+  return {
+    ...state,
+    jevCalls: state.jevCalls + 1,
+    jevInputTokens: state.jevInputTokens + (inputTokens ?? 0),
+    jevOutputTokens: state.jevOutputTokens + (outputTokens ?? 0),
+  };
+}
+
+/** Reads the persisted quota state; returns undefined when missing or malformed. */
+export function readQuotaState(path: string): QuotaState | undefined {
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8"));
+    return isQuotaState(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Best-effort persistence; a failed write must never break routing. */
+export function writeQuotaState(path: string, state: QuotaState): void {
+  try {
+    writeFileSync(path, JSON.stringify(state, null, 2) + "\n", "utf8");
+  } catch {
+    // Ignore; the in-memory state still drives the current session and the next write retries.
+  }
+}
+
+/** Formats the quota line for /route status; estimated and manual are explicitly non-authoritative. */
+export function formatQuotaLine(quota: QuotaState | undefined): string {
+  if (!quota || quota.mode === "unknown") return "quota unknown";
+  const softLimit = quota.softLimitTokens > 0 ? ` · soft limit ${quota.softLimitTokens}` : "";
+  return `quota ${quota.mode} (non-authoritative local estimate) ${quota.windowStart}→${quota.windowEnd} · ${quota.reportedTurns} turns · ${quota.reportedInputTokens} in / ${quota.reportedOutputTokens} out · cache ${quota.reportedCacheReadTokens} · Jev ${quota.jevCalls} calls${softLimit}`;
+}
+
+function isQuotaState(value: unknown): value is QuotaState {
+  return isRecord(value) && value.version === 1 && isBudgetMode(value.mode)
+    && typeof value.windowStart === "string" && typeof value.windowEnd === "string"
+    && isNonNegativeInteger(value.reportedInputTokens) && isNonNegativeInteger(value.reportedOutputTokens)
+    && isNonNegativeInteger(value.reportedCacheReadTokens) && isNonNegativeInteger(value.reportedTurns)
+    && isNonNegativeInteger(value.jevCalls) && isNonNegativeInteger(value.jevInputTokens) && isNonNegativeInteger(value.jevOutputTokens)
+    && isNonNegativeInteger(value.softLimitTokens);
+}
+
 /** Builds the TypeSafe Jev transport behind the TaskClassifier boundary. */
 export function createJevClassifier(model: string, timeoutMs: number): TaskClassifier {
   return {
@@ -310,10 +415,16 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   let configError: string | undefined;
   let classifier: TaskClassifier | undefined;
   let state: RouterSessionState = { applyingRoute: false, manualSelection: false };
+  let quota: QuotaState | undefined;
 
   try {
     config = parseCodexRouterConfig(JSON.parse(readFileSync(ROUTER_CONFIG_PATH, "utf8")));
     classifier = createJevClassifier(config.jev.model, config.jev.timeoutMs);
+    const stored = readQuotaState(quotaStatePath());
+    const windowHours = config.budget.windowHours;
+    quota = stored && stored.mode === config.budget.mode
+      ? rotateQuotaState({ ...stored, softLimitTokens: config.budget.softLimitTokens }, windowHours)
+      : createQuotaState(config.budget.mode, windowHours, config.budget.softLimitTokens);
   } catch (error) {
     configError = errorMessage(error);
   }
@@ -338,6 +449,10 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     };
     pi.appendEntry(ROUTER_DECISION_ENTRY, decision);
     state.lastDecision = decision;
+    if (quota && selection.judgment) {
+      quota = rotateQuotaState(recordJevUsage(quota, selection.judgment.inputTokens, selection.judgment.outputTokens), config?.budget.windowHours ?? 168);
+      writeQuotaState(quotaStatePath(), quota);
+    }
     ctx.ui.setStatus("codex-jev-router", `Route: ${decision.routeId} (${decision.source})`);
     return decision;
   }
@@ -399,6 +514,16 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     }
   });
 
+  // Local non-authoritative quota tracking: every assistant turn's provider-reported usage.
+  pi.on("turn_end", (event, _ctx) => {
+    if (!quota) return;
+    const rawUsage = (event.message as { usage?: unknown }).usage;
+    const usage = isRecord(rawUsage) ? rawUsage : undefined;
+    if (!usage || typeof usage.input !== "number" || typeof usage.output !== "number") return;
+    quota = rotateQuotaState(recordGenerationUsage(quota, { input: usage.input, output: usage.output, cacheRead: typeof usage.cacheRead === "number" ? usage.cacheRead : 0 }), config?.budget.windowHours ?? 168);
+    writeQuotaState(quotaStatePath(), quota);
+  });
+
   pi.on("before_agent_start", async (event, ctx) => {
     if (!config || configError || !classifier || state.manualSelection) return;
     const requested = state.pendingRoute;
@@ -431,9 +556,9 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     handler: async (args, ctx) => {
       const [command = "status", routeText] = args.trim().split(/\s+/, 2);
       if (command === "status") {
-        const current = `${ctx.model.provider}/${ctx.model.id}:${pi.getThinkingLevel()}`;
+        const current = `${ctx.model?.provider ?? "unknown"}/${ctx.model?.id ?? "unknown"}:${pi.getThinkingLevel()}`;
         const pin = state.pin ? `${state.pin.source} ${state.pin.provider}/${state.pin.model}:${state.pin.thinkingLevel}` : "none";
-        ctx.ui.notify(`Codex router: ${configError ? `disabled (${configError})` : "ready"}; current ${current}; pin ${pin}; subscription quota unknown.`, configError ? "warning" : "info");
+        ctx.ui.notify(`Codex router: ${configError ? `disabled (${configError})` : "ready"}; current ${current}; pin ${pin}; ${formatQuotaLine(quota)}.`, configError ? "warning" : "info");
         return;
       }
       if (command === "auto" || command === "reset") {
@@ -495,6 +620,13 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 }
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+const budgetModes: readonly BudgetMode[] = ["unknown", "manual", "estimated"];
+function isBudgetMode(value: unknown): value is BudgetMode {
+  return typeof value === "string" && (budgetModes as readonly string[]).includes(value);
 }
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string" && item.length > 0);
