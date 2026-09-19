@@ -89,7 +89,7 @@ The ledger distinguishes:
 
 ## 実装済み範囲と乖離（2026-09-19）
 
-構成図の流れは prototype で実装済み: one-shot / session override（`/route once|pin`）、session-start の pin 復元、keyword hard gate（→ `hard`）、bounded redacted synopsis（2,000 bytes・sha256・原文非保存）、Jev Choice 分類（1 request・strict timeout・no retry・`TYPESAFE_API_KEY`）を `TaskClassifier` 境界（`createJevClassifier`）経由で実施、confidence 閾値、`setModel()` + `setThinkingLevel()` の検証付き適用、pin/decision の custom entry 永続化、`/route report`（session ディレクトリ走査の decision 集計）、fail-open fallback。実測は research.md §10。
+構成図の流れは prototype で実装済み: one-shot / session override（`/route once|pin`）、session-start の pin 復元、keyword hard gate（→ `hard`）、bounded redacted synopsis（2,000 bytes・sha256・原文非保存）、Jev Choice 分類（1 request・strict timeout・no retry・`TYPESAFE_API_KEY`）を `TaskClassifier` 境界（`createJevClassifier`）経由で実施、confidence 閾値、`setModel()` + `setThinkingLevel()` の検証付き適用、pin/decision の custom entry 永続化、`/route report`（session ディレクトリ走査の decision 集計）、`rollout.enabledRoutes` による段階展開（auto 提案のみ gate・decision に `rolloutGate`/`suggestedRouteId` 記録・report で gated 集計、NORMAL は暗黙に有効、hard-gate/one-shot/pin/manual は対象外）、fail-open fallback。実測は research.md §10。
 
 提案からの乖離:
 

@@ -57,6 +57,15 @@ Implemented extension commands（2026-09-19、prototype）:
 
 The built-in `/model` and `/thinking` remain authoritative manual controls. On a manual model/thinking change, the extension writes a pin entry with source `manual` and does not silently reverse it（実装済み）. This is more predictable than attempting to infer an override from free text.
 
+## Guarded rollout
+
+`rollout.enabledRoutes` で段階展開を行う（実装 2026-09-19。方法は implementation-plan Milestone 4）:
+
+- **現在の stage（確認日 2026-09-19）:** `enabledRoutes: ["light"]`。Jev が `auto` で hard/very-hard を提案しても適用されず、NORMAL に落ちる。このとき decision entry に `rolloutGate: true` と `suggestedRouteId` が記録され、`/route report` の gated 集計で提案分布を観測できる。
+- **NORMAL は暗黙に常時有効**（fallback 既定であり、段階展開の対象外）。
+- **対象外（常に適用）:** `hard-gate` / `one-shot` / `pin` / `manual`。安全 gate とユーザー override は段階展開の影響を受けない。`fallback`（Jev 不可・unclear・低 confidence）も元々 NORMAL なので影響なし。
+- **段階の前進**（例: `["light", "hard"]` → 全 route）は、実 session の誤ルーティングを periodic レビューしてから行う。レビューは `/route report`（route/source 別・fallback rate・gated 集計）と decision entry（task は hash/bytes のみ・原文なし）を突き合わせ、成功指標（implementation-plan M4）を確認する。
+
 ## Budget policy
 
 No public API was confirmed for an individual ChatGPT/Codex subscription's remaining five-hour/weekly allowance or reset time. Therefore MVP policy has only these valid states:
