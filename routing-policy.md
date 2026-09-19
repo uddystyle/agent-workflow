@@ -47,7 +47,7 @@ Do not encode assertions such as “Astra is always strongest” or “Sol is ch
 
 Implemented extension commands（2026-09-19、prototype）:
 
-- `/route status` — current pin, effective model/thinking, and quota state（`unknown` 表示のみ）。latest decision は `/route explain`。
+- `/route status` — current pin, effective model/thinking, and quota state（`unknown`/`manual`/`estimated`。計測値は non-authoritative と明示）。latest decision は `/route explain`。
 - `/route auto` — clear user pin; next eligible prompt gets one routing decision.
 - `/route pin light|normal|hard|very-hard` — pin a validated class for this session.
 - `/route once light|normal|hard|very-hard` — affects only the next eligible prompt.
@@ -70,8 +70,8 @@ The built-in `/model` and `/thinking` remain authoritative manual controls. On a
 
 No public API was confirmed for an individual ChatGPT/Codex subscription's remaining five-hour/weekly allowance or reset time. Therefore MVP policy has only these valid states:
 
-- `unknown` — default for subscription quota. 実装（2026-09-19）はこの状態のみで、`/route status` が「subscription quota unknown」と表示する。
-- `manual` — user-configured soft budget/reset information. 未実装。
-- `estimated` — local provider-reported token/request rolling totals; labelled non-authoritative. 未実装。
+- `unknown` — default for subscription quota. quota state は永続化され、`/route status` は「quota unknown」と表示する。ローカル計測自体は常に蓄積される（mode は表示ラベルにのみ効く）。
+- `manual` — user-configured soft budget/reset information. 実装（2026-09-19）: `budget.mode: "manual"` + `budget.softLimitTokens` を設定すると、`/route status` が窓（`budget.windowHours`、既定 168h）内のローカル計測と soft limit を「non-authoritative」と明示して表示する。nudge-down は行わない（下記）。
+- `estimated` — local provider-reported token/request rolling totals; labelled non-authoritative. 実装（2026-09-19）: `turn_end` の `message.usage`（assistant message の必須フィールド。計測方法は research.md §13）と decision の Jev usage を、窓ごとに `~/.pi/agent/codex-jev-router-quota.json`（env `CODEX_JEV_ROUTER_QUOTA_PATH` で変更可）へ永続化する。窓が `windowEnd` を過ぎるとゼロから再開する。状態ファイルを削除すると窓を手動リセットできる。mode を変更すると窓の計測をリセットして再開する。ローカル計測の蓄積自体は mode に関わらず常時行われる（mode は表示ラベルにのみ効く）。
 
-Budget policy may nudge an unpinned, low-risk task down only when a configured local estimate crosses a soft threshold. It must never interrupt a user override or downgrade a hard-gated task. A future API-key provider fallback can implement the same interface without changing routing semantics.
+Budget policy may nudge an unpinned, low-risk task down only when a configured local estimate crosses a soft threshold. It must never interrupt a user override or downgrade a hard-gated task. A future API-key provider fallback can implement the same interface without changing routing semantics. **nudge-down は未実装**（future boundary）。

@@ -1,6 +1,6 @@
 # Pi / Codex Token Management with Jev — architecture proposal
 
-確認日: 2026-09-18 / 2026-09-19。事実根拠は [research.md](research.md)（§10 に実セッション実測）。本書で設計した router の prototype（`codex-jev-router.ts` / `codex-jev-router.json`）は実装・展開済みで、実測を含む。commit `3a873c1`（Jev model pin）、`c5ca162`（judgment 永続化）、`4f559ed`（実測記録）。未実装の将来境界（BudgetManager・GenerationFallback・project-local opt-out）は提案のまま。
+確認日: 2026-09-18 / 2026-09-19。事実根拠は [research.md](research.md)（§10 に実セッション実測、§13 に quota 実装）。本書で設計した router の prototype（`codex-jev-router.ts` / `codex-jev-router.json`）は実装・展開済みで、実測を含む。commit `3a873c1`（Jev model pin）、`c5ca162`（judgment 永続化）、`4f559ed`（実測記録）。将来境界のうち Budget state（`manual`/`estimated` と quota 永続化）は実装済み。`BudgetManager` interface 化・`GenerationFallback`・project-local opt-out は提案のまま。
 
 ## 結論
 
@@ -89,13 +89,13 @@ The ledger distinguishes:
 
 ## 実装済み範囲と乖離（2026-09-19）
 
-構成図の流れは prototype で実装済み: one-shot / session override（`/route once|pin`）、session-start の pin 復元、keyword hard gate（→ `hard`）、bounded redacted synopsis（2,000 bytes・sha256・原文非保存）、Jev Choice 分類（1 request・strict timeout・no retry・`TYPESAFE_API_KEY`）を `TaskClassifier` 境界（`createJevClassifier`）経由で実施、confidence 閾値、`setModel()` + `setThinkingLevel()` の検証付き適用、pin/decision の custom entry 永続化、`/route report`（session ディレクトリ走査の decision 集計）、`rollout.enabledRoutes` による段階展開（auto 提案のみ gate・decision に `rolloutGate`/`suggestedRouteId` 記録・report で gated 集計、NORMAL は暗黙に有効、hard-gate/one-shot/pin/manual は対象外）、fail-open fallback。実測は research.md §10。
+構成図の流れは prototype で実装済み: one-shot / session override（`/route once|pin`）、session-start の pin 復元、keyword hard gate（→ `hard`）、bounded redacted synopsis（2,000 bytes・sha256・原文非保存）、Jev Choice 分類（1 request・strict timeout・no retry・`TYPESAFE_API_KEY`）を `TaskClassifier` 境界（`createJevClassifier`）経由で実施、confidence 閾値、`setModel()` + `setThinkingLevel()` の検証付き適用、pin/decision の custom entry 永続化、`/route report`（session ディレクトリ走査の decision 集計）、`rollout.enabledRoutes` による段階展開（auto 提案のみ gate・decision に `rolloutGate`/`suggestedRouteId` 記録・report で gated 集計、NORMAL は暗黙に有効、hard-gate/one-shot/pin/manual は対象外）、budget state（`unknown`/`manual`/`estimated`）の quota 永続化（`turn_end` の generation usage + decision の Jev usage を窓ごとに `~/.pi/agent/codex-jev-router-quota.json` へ、`budget.windowHours` で自動ローテーション）、fail-open fallback。実測は research.md §10、quota 実装は §13。
 
 提案からの乖離:
 
 - hard gate は keyword 判定（config `hardGate.patterns` の単語を word-boundary・case-insensitive で照合）で `hard` にのみ上げる（`very-hard` への切替や追加 confirmation はしない）。パターンは設定データ化済みで、調整は `codex-jev-router.json` の変更になる。
 - Jev は Choice のみ。提案の optional Nouls（`security_sensitive` / `migration` / `ambiguous_requirements`）は未実装で、security/migration は keyword gate で拾う。
-- budget state（`manual` / `estimated`）は未実装。`/route status` は quota を `unknown` と表示するだけ。
-- 観測は custom entry（decision / pin）のみで、local export file は未作成。`/route explain` は最新 decision の reason、`/route report` は decision の route/source 別集計・fallback rate・Jev 集計を notify で返す。
+- budget state の実装は config `budget` + quota 永続化ファイルへ進めた。`auto` 提案への nudge-down は行わず、計測値は `non-authoritative local estimate` と明示する（`/route status`）。`authoritative` 状態（subscription quota の公式値）は公開 API が未確認のため存在しない。
+- 観測は custom entry（decision / pin）と quota 状態ファイルに分散している。`/route explain` は最新 decision の reason、`/route report` は decision の route/source 別集計・fallback rate・Jev 集計を notify で返す。
 - config は global（`~/.pi/agent/codex-jev-router.json`、repo への symlink）のみで、project-local opt-out は未実装。
 - route の capability 検証は session_start の eager でなく、apply 時に `ctx.modelRegistry.find()` で行う。

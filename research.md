@@ -167,3 +167,39 @@ zsh -i -c "cd '$scratch' && pi --session-dir '$scratch/sessions' -p '<prompt>'" 
 - 実 session の pre-fix 4 件 + judge-app 1 件は jev/gating なし（記録形式が変わる前）で、このレビューの対象外。
 
 **決定:** stage 1 → **stage 2（`enabledRoutes: ["light", "hard"]`）** に前進（commit 後の設定反映）。stage 2 では hard 提案が astra/high で適用され、very-hard 提案が gated で normal に落ちて decision に残る。出典: 上記ローカル実測（再現コマンド・確認日）。**限界:** ライブ バッチは合成 prompt 3 件・各 1 session で n が小さい。実作業 session の蓄積（`/route report` の gated 集計）での継続レビューを次の stage 判断（very-hard 有効化）に用いる。
+
+## §13. Quota state の永続化と budget mode（2026-09-19）
+
+**目的:** implementation-plan M3 の残件（quota state の永続化、budget `manual`/`estimated`）を実装する。まず「Pi extension から生成 usage を観測できるか」を一次情報（install 済み Pi 0.85.1 の型定義）で確認した。
+
+**API 観測確認（出典: ローカル .d.ts、パスは `$(npm root -g)/@earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts`）:**
+
+- `ExtensionAPI.on("turn_end", handler)` が登録可能（types.d.ts:930）。`TurnEndEvent` は `message: AgentMessage` を持つ。
+- `AssistantMessage`（pi-ai の `Message` の一つ、role `"assistant"`）は **必須 `usage: Usage`** を持つ（`node_modules/@earendil-works/pi-ai/dist/types.d.ts` の `interface AssistantMessage`）。
+- `Usage`（同 pi-ai の `interface Usage`）は `input` / `output` / `cacheRead` / `cacheWrite` / `reasoning?` / `totalTokens` / `cost`。この `input`/`output` は research §10 で JSONL から jq 抽出していた provider-reported token と同一系統。
+
+再現（確認コマンド）:
+
+```sh
+grep -n '"turn_end"' $(npm root -g)/@earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts
+grep -n 'interface Usage' $(npm root -g)/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/types.d.ts
+```
+
+（確認日: 2026-09-19、Pi package はローカル install の型定義のみ・実通信なし。）
+
+**実装:** config に `budget: { mode: "unknown"|"manual"|"estimated", windowHours, softLimitTokens }` を追加。quota state は machine-local の `~/.pi/agent/codex-jev-router-quota.json`（env `CODEX_JEV_ROUTER_QUOTA_PATH` で変更可、repo 外）へ永続化する。蓄積は常時（mode は表示ラベルにのみ効く）:
+
+- `turn_end` の `message.usage` → generation の input/output/cacheRead と turn 数を加算
+- decision の `judgment`（Jev）→ jevCalls / Jev token を加算
+- 窓（`windowHours`、既定 168h）が `windowEnd` を過ぎるとゼロから再開（状態ファイル削除で手動リセット可）
+
+`/route status` は mode 別に表示し、`manual`/`estimated` は `non-authoritative local estimate` と明示する。`unknown` は従来どおり「quota unknown」。
+
+再現（テスト・型チェック）:
+
+```sh
+bash tests/codex-jev-router.sh          # budget 検証・turn_end E2E・status 行を含む
+# 型チェックは一時 tsconfig（module esnext / moduleResolution bundler / strict）で Pi .d.ts を paths 指定
+```
+
+**限界:** provider-reported token は subscription allowance そのものではない（§5/§6/§10 の測定限界と同じ）。`estimated` はあくまで non-authoritative なローカル計測で、節約量や残枠を主張しない。nudge-down（soft threshold を跨いだ低リスク task の降格）は policy 上 allowed だが実装しない（future boundary、routing-policy §Budget policy）。窓ローテーションは時刻ベースで、subscription のリセット時刻とは無関係。出典: 上記ローカル型定義＋ `tests/codex-jev-router.sh` のローカル実測（確認日 2026-09-19）。
