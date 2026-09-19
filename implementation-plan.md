@@ -4,16 +4,16 @@
 
 ## Status（2026-09-19）
 
-prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559ed`、TaskClassifier/report `6a5113c`、校准 `2a07b0e` / research.md §11、hard gate 設定データ化 `9ffd892`、guarded rollout stage 1 `72f9c49`、stage 2 `f72574e` / routing-policy §Guarded rollout・research.md §12、quota state 永続化 `76f4303` / routing-policy §Budget policy・research.md §13、実測は research.md §10）。
+prototype は実装・展開済み（commit `3a873c1`, `c5ca162`、実測 `4f559ed`、TaskClassifier/report `6a5113c`、校准 `2a07b0e` / research.md §11、hard gate 設定データ化 `9ffd892`、guarded rollout stage 1 `72f9c49`、stage 2 `f72574e` / routing-policy §Guarded rollout・research.md §12、quota state 永続化 `76f4303` / routing-policy §Budget policy・research.md §13、project-local opt-out `0d17bb0` / routing-policy §Project-local opt-out・research.md §14、実測は research.md §10）。
 
 - Milestone 0（harness / baseline）: ✅ `tests/codex-jev-router.sh`（fake provider + fetch スタブで外部通信なし）。baseline は research.md §7。
 - Milestone 1（deterministic router skeleton）: ✅ `/route status|auto|pin|once|reset|explain|report`、typed config、pin/decision の custom entry と session-start 復元、`setModel()` + `setThinkingLevel()` の検証付き適用、`model_select`/`thinking_level_select` の manual 検出。
 - Milestone 2（Jev adapter）: ✅ 直接 TypeSafe System One API・`TYPESAFE_API_KEY`・bounded synopsis（2,000 bytes）・strict timeout（5,000ms）・no retry・schema 検証・fail-open・`TaskClassifier` interface 抽出（`createJevClassifier(model, timeoutMs)` が Jev を transport として実装）。
 - Milestone 3（observability）: ✅ decision / pin entry は実装済み（version・at・routeId・source・reason・model/thinking・jev confidence/tokens/elapsedMs・task hash/bytes）。offline report command を `/route report` として実装（session ディレクトリ走査→route/source 別集計・fallback rate・Jev 集計を notify）。quota state の永続化も実装済み（budget `manual`/`estimated`、`~/.pi/agent/codex-jev-router-quota.json`、routing-policy §Budget policy・research.md §13）。
 - Milestone 4（calibration / guarded rollout）: 🔶 confidence 校准は実施済み（`jev-calibration.sh`/`.ts` が observation harness、ラベル付き16タスク実測・threshold sweep で `minimumConfidence` を 0.65 → 0.70 に調整。詳細は research.md §11）。guarded rollout は **stage 2 適用中**（`rollout.enabledRoutes: ["light", "hard"]`。stage 1→2 は誤ルーティング定期レビューのライブ実測で判断、詳細は research.md §12）。very-hard 提案は gated で decision に `rolloutGate`/`suggestedRouteId` を残し `/route report` の gated 集計で観測。残るは very-hard 有効化の判断材料になる実 session 蓄積の定期レビューだけ。
-- 将来境界（BudgetManager の interface 化 / GenerationFallback / project-local opt-out）: Budget state の実装は進めた（budget config + quota state 永続化、下記）。`BudgetManager` interface・`GenerationFallback`・project-local opt-out は未実装（architecture.md の乖離欄と同一）。
+- 将来境界（BudgetManager の interface 化 / GenerationFallback）: Budget state と project-local opt-out は実装済み（下記）。`BudgetManager` interface・`GenerationFallback` は未実装（architecture.md の乖離欄と同一）。
 
-未実装のまま残る点: project-local opt-out、M4 の very-hard 有効化判断（実 session 蓄積レビュー）、BudgetManager/GenerationFallback の interface 化。observation は `jev-calibration.sh`（§11）、hard gate は設定データ化（`hardGate.patterns`）、guarded rollout は stage 2（`rollout.enabledRoutes: ["light", "hard"]`）適用済み（§12）、budget `manual`/`estimated` と quota state の永続化は実装済み（routing-policy §Budget policy・research.md §13）。
+未実装のまま残る点: M4 の very-hard 有効化判断（実 session 蓄積レビュー）、BudgetManager/GenerationFallback の interface 化、project-local の `enabled: true` override や route 上書き設定（opt-out のみ実装）。observation は `jev-calibration.sh`（§11）、hard gate は設定データ化（`hardGate.patterns`）、guarded rollout は stage 2（`rollout.enabledRoutes: ["light", "hard"]`）適用済み（§12）、budget `manual`/`estimated` と quota state の永続化は実装済み（routing-policy §Budget policy・research.md §13）、project-local opt-out は実装済み（routing-policy §Project-local opt-out・research.md §14）。
 
 ## Scope
 
@@ -36,7 +36,7 @@ The MVP uses the direct TypeSafe System One HTTP API with `TYPESAFE_API_KEY`; it
 
 - Provide `TYPESAFE_API_KEY` through the interactive Pi launch environment when live Jev classification is desired. Do not put it in this repository, router JSON, or command arguments.
 - Approve which currently scoped Codex models are route candidates and run a capability inspection to derive allowed thinking levels.
-- Decide whether router configuration is global only or project-aware. Default recommendation: global policy with a project-local **opt-out**, because model allocation is a user subscription resource and project settings are trust-sensitive.
+- Decide whether router configuration is global only or project-aware. Default recommendation: global policy with a project-local **opt-out**, because model allocation is a user subscription resource and project settings are trust-sensitive. **Resolved（2026-09-19）:** global config に project-local opt-out（`<cwd>/.codex-jev-router.json` の `{version: 1, enabled: false}` で自動経路を停止、明示コマンドは維持）を実装。詳細は routing-policy §Project-local opt-out。
 - Define data retention for route logs. Logs must never contain credentials, full prompts, tool output, or repository file contents.
 
 ## Milestone 0 — harness and baseline

@@ -203,3 +203,24 @@ bash tests/codex-jev-router.sh          # budget 検証・turn_end E2E・status 
 ```
 
 **限界:** provider-reported token は subscription allowance そのものではない（§5/§6/§10 の測定限界と同じ）。`estimated` はあくまで non-authoritative なローカル計測で、節約量や残枠を主張しない。nudge-down（soft threshold を跨いだ低リスク task の降格）は policy 上 allowed だが実装しない（future boundary、routing-policy §Budget policy）。窓ローテーションは時刻ベースで、subscription のリセット時刻とは無関係。出典: 上記ローカル型定義＋ `tests/codex-jev-router.sh` のローカル実測（確認日 2026-09-19）。
+
+## §14. Project-local opt-out と cwd の取得（2026-09-19）
+
+**目的:** implementation-plan Preconditions の「global policy with a project-local opt-out」を実装する。まず「extension が現在のプロジェクトの working directory を取得できるか」を一次情報（install 済み Pi 0.85.1 の型定義）で確認した。
+
+**API 確認（出典: `$(npm root -g)/@earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts`）:**
+
+- `ExtensionContext`（types.d.ts:209）は `cwd: string` を持つ。`ExtensionCommandContext extends ExtensionContext`（同 254）なので、event handler（`session_start`/`before_agent_start` 等）と command handler（`/route`）の両方の ctx で `cwd` が使える。`session_start` は reload でも発火するので、ここで opt-out を決定する。
+
+再現（確認コマンド）:
+
+```sh
+grep -n "interface ExtensionContext\|interface ExtensionCommandContext\|cwd: string" \
+  $(npm root -g)/@earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts
+```
+
+（確認日: 2026-09-19、型定義のみ・実通信なし。）
+
+**設計決定:** project root の `.codex-jev-router.json` に `{ "version": 1, "enabled": false }` があると、そのプロジェクトの**自動経路のみ**を停止する（Jev 分類と keyword hard gate の自動適用。opt-out は「global policy が model を変えてはならない」という明示なので安全 gate も自動適用しない）。明示コマンド（`/route pin|once|auto|reset`）と manual 検出（`model_select`/`thinking_level_select`）は維持し、`/route status` に「project opt-out」を表示する。壊れたマーカー・version 不一致・`enabled: true`・ファイル無しは既定（global policy 有効）。詳細は routing-policy §Project-local opt-out。
+
+**検証:** `tests/codex-jev-router.sh` に純粋関数（`parseProjectOptOut`）と読み取り（`readProjectOptOut`）＋ E2E（opt-out プロジェクトで hard-gate キーワードと Jev 呼び出しが起きない・one-shot は効く・status に opt-out 表示）を追加。**限界:** opt-out 中の security/migration 作業は既定 model のまま（trade-off は routing-policy に明記）。project-local の `enabled: true` override や route 上書きは未実装。出典: 上記ローカル型定義＋ `tests/codex-jev-router.sh` のローカル実測（確認日 2026-09-19）。
