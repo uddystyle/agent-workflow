@@ -1,7 +1,7 @@
 # agent-workflow
 
-**Generated:** 2026-09-10T00:23:35+09:00
-**Commit:** 4ae7adef
+**Generated:** 2026-09-20
+**Commit:** 44d696fe
 
 この印は「そのときのツリーを読んで書いた」を意味する。生成物は次のコミットに入るので、
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
@@ -33,14 +33,21 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 - Lint: 未定義（manifest 無し）
 - Build: 未定義（manifest 無し）
 
-## How to navigate this codebase
+## Structure and where to look
 
-- `skills/` — スキル正本（SKILL.md）と外部skillのSOURCE／LICENSEを置く場所。`README.md:7-13`, `install.sh:58-78`
-- `home/` — 機械起動時の設定本体。`install.sh:80-113`, `README.md:12`, `home/.config/herdr/config.toml:1-84`
-- `home/.pi/agent/` — Pi拡張とMCP安全設定。`README.md`の構成表、`.gitignore:12-27`
-- `dot` / `packages/` — HomebrewとPi packageの導入・更新・診断。`README.md`の入れ方、`packages/pi-packages.txt`
-- `tests/` — bootstrap・review・install・doctor・guardrail・worktree 検査。`README.md` の検査節
-- `DECISIONS.md` — 方針・境界の正本。`DECISIONS.md:1-4`
+この repo は `skills/`・`home/`・`dot`・`install.sh`・`packages/`・`tests/`・`DECISIONS.md`・`architecture.md` で構成する。
+
+| Task | Canonical source / entry |
+| --- | --- |
+| 共有skillを追加・変更 | `skills/<name>/SKILL.md`。配信契約は `install.sh` |
+| Piだけが読むskillを追加・変更 | `home/.pi/agent/skills/<name>/`。consumerを増やすまで共有正本へ移さない |
+| Pi extension / MCP安全設定 | `home/.pi/agent/extensions/` / `home/.pi/agent/mcp.json` |
+| マシン設定を変更 | `home/`。配置は `install.sh` と `stow` |
+| 導入・更新・診断を変更 | `dot` / `install.sh` |
+| package定義を変更 | `packages/` |
+| 検査を追加・変更 | `tests/`。一時HOME・tmpで隔離できるか確認 |
+| 方針・選択理由を変更 | `DECISIONS.md` |
+| 構造・責務を確認 | `architecture.md` |
 
 ## Conventions
 
@@ -64,8 +71,9 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 - worktree は `skills/worktrees/SKILL.md` をモデルからも呼べる。作成と Herdr tab 起動は別操作。
 - `dot init/update` は依存導入・ネットワーク・HOME変更を伴う。Pi packageは`packages/pi-packages.txt`から導入する。検査は`tests/bootstrap.sh`の偽コマンドと一時HOMEを使う。
 
-## Boundaries
+## Boundaries and anti-patterns
 
+- 配信先の `~/.agents/skills/`・`~/.pi/agent/`・`~/.config/` を直接編集せず、repo側の正本を変更してから配信する。
 - `home/.pi/agent/` の実体や同居物を手で直接いじると、`install.sh` の配信状態が壊れる。
   `home/.pi/agent/*` は基本 ignore で、例外だけ復元される。`.gitignore:12-33`
 - `home/.pi/agent/extensions/pi-cloak/` と `home/.pi/agent/extensions/save-md/` は外部由来扱いで置かない。
