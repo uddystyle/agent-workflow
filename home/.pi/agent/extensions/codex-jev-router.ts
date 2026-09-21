@@ -75,6 +75,8 @@ export type RouteTelemetry = {
   startedAt: string;
   completedAt: string;
   durationMs: number;
+  /** Added after the initial v1 telemetry shape; absent in legacy entries. */
+  decisionAt?: string;
   routeId: CodexRouteId;
   source: RouteSource;
   model?: string;
@@ -85,6 +87,7 @@ export type RouteTelemetry = {
   userOverride: boolean;
   task: { byteLength: number; sha256: string };
 };
+type SettledRouteTelemetry = RouteTelemetry & { decisionAt: string };
 
 export type RouteFeedback = {
   version: 1;
@@ -93,8 +96,11 @@ export type RouteFeedback = {
   label: "correct" | "wrong";
   routeId: CodexRouteId;
   source: RouteSource;
+  /** Added after the initial v1 feedback shape; absent in legacy entries. */
   decisionAt?: string;
   telemetryAt?: string;
+  startedAt?: string;
+  task?: { byteLength: number; sha256: string };
 };
 
 type PersistedPin = {
@@ -115,7 +121,7 @@ type JevRouteJudgment = {
   elapsedMs: number;
 };
 
-/** Bounded classifier input: only this local-scanned excerpt is sent to Jev; the full prompt is never persisted. */
+/** Bounded classifier input: transport checks this excerpt for known sensitive patterns; the full prompt is never persisted. */
 export type BoundedTaskSynopsis = { task: string; byteLength: number; sha256: string };
 /** @deprecated Bounded inputs are length-limited, not secret-redacted. */
 export type RedactedTaskSynopsis = BoundedTaskSynopsis;
@@ -145,10 +151,13 @@ export async function resolveRouteCandidate<TModel>(registry: { find(provider: s
 
 /** Resolve only models visible in Pi's current provider/authentication scope. */
 async function resolveScopedRouteCandidate(ctx: ExtensionContext, route: ModelRoute, fallback: GenerationFallback<any> | undefined): Promise<any | undefined> {
-  const scoped = (ctx as ExtensionContext & { scopedModels?: unknown }).scopedModels;
+  const scoped = (ctx as ExtensionContext & { scopedModels?: readonly { model?: unknown; thinkingLevel?: unknown }[] }).scopedModels;
   if (Array.isArray(scoped) && scoped.length > 0) {
-    const candidate = scoped.find((model) => isRecord(model) && model.provider === route.provider && model.id === route.model);
-    return candidate ?? undefined;
+    const candidate = scoped.find((item) => {
+      if (!isRecord(item) || !isRecord(item.model) || item.model.provider !== route.provider || item.model.id !== route.model) return false;
+      return item.thinkingLevel === undefined || item.thinkingLevel === route.thinkingLevel;
+    });
+    return candidate && isRecord(candidate.model) ? candidate.model : undefined;
   }
   return resolveRouteCandidate(ctx.modelRegistry, route, fallback);
 }
@@ -174,6 +183,7 @@ type RouterSessionState = {
     startedAt: number;
     routeId?: CodexRouteId;
     source?: RouteSource;
+    decisionAt?: string;
     model?: string;
     thinkingLevel?: ThinkingLevel;
     task: { byteLength: number; sha256: string };
@@ -183,6 +193,7 @@ type RouterSessionState = {
     userOverride: boolean;
   };
   lastTelemetry?: RouteTelemetry;
+  feedbackTarget?: { decision: RouteDecision; telemetry: SettledRouteTelemetry };
 };
 
 const routeIds: readonly CodexRouteId[] = ["light", "normal", "hard", "very-hard"];
@@ -212,6 +223,7 @@ export function parseCodexRouterConfig(value: unknown): RouterConfig {
   if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
     throw new Error("codex-jev-router: enabled must be a boolean when present.");
   }
+  const observation = isRecord(value.observation) ? value.observation : undefined;
   return {
     version: 1,
     enabled: value.enabled === false ? false : true,
@@ -221,7 +233,7 @@ export function parseCodexRouterConfig(value: unknown): RouterConfig {
     rollout: { enabledRoutes: value.rollout.enabledRoutes },
     budget: { mode: value.budget.mode, windowHours: value.budget.windowHours, softLimitTokens: value.budget.softLimitTokens },
     jev: { model: value.jev.model, timeoutMs: value.jev.timeoutMs, minimumConfidence: value.jev.minimumConfidence },
-    observation: { sampleRate: value.observation?.sampleRate ?? 0 },
+    observation: { sampleRate: typeof observation?.sampleRate === "number" ? observation.sampleRate : 0 },
   };
 }
 
@@ -268,20 +280,38 @@ function createBoundedSynopsis(text: string, limitChars: number): { text: string
   };
 }
 
-/** Redacts a user task into a bounded classifier input; the original prompt is never persisted. */
+/** Creates a bounded classifier input; external transport performs a separate local safety check. */
 export function createBoundedTaskSynopsis(prompt: string): BoundedTaskSynopsis {
   const bounded = createBoundedSynopsis(prompt, 2_000);
   return { task: bounded.text, byteLength: bounded.byteLength, sha256: bounded.sha256 };
 }
-/** @deprecated Use createBoundedTaskSynopsis; this function does not redact secrets. */
+/** @deprecated Use createBoundedTaskSynopsis; this function does not rewrite sensitive data. */
 export const createRedactedTaskSynopsis = createBoundedTaskSynopsis;
 
+/** Detects common credential and PII shapes without returning the matched value. */
+function sensitiveDataKind(text: string): string | undefined {
+  const credentialPatterns: [RegExp, string][] = [
+    [/\b(?:password|passwd|passcode)(?:\s*[:=]\s*|\s+(?:is\s+)?)(?!stored\b|in\b|at\b|none\b|redacted\b|<redacted>)[^\s,.;]+/i, "password"],
+    [/\b(?:api[\s_-]*key|access[\s_-]*token|authorization|auth[\s_-]*token|client[\s_-]*secret|credential|secret)(?:\s*[:=]\s*|\s+(?:is\s+)?)(?!stored\b|in\b|at\b|none\b|redacted\b|<redacted>)[A-Za-z0-9_./:+-]{8,}/i, "credential"],
+    [/\b(?:[A-Z0-9._%+-]+)@[A-Z0-9.-]+\.[A-Z]{2,}\b/i, "email address"],
+  ];
+  for (const [pattern, kind] of credentialPatterns) if (pattern.test(text)) return kind;
+  const phone = text.match(/(?<!\w)\+?\d[\d .()\-]{8,}\d(?!\w)/g)?.find((candidate) => (candidate.match(/\d/g)?.length ?? 0) >= 10);
+  if (phone) return "phone number";
+  const card = text.match(/(?<!\d)(?:\d[ -]?){13,19}(?!\d)/g)?.find((candidate) => {
+    const digits = candidate.replace(/\D/g, "");
+    return digits.length >= 13 && digits.length <= 19;
+  });
+  if (card) return "payment-card number";
+  return undefined;
+}
+
 /**
- * Run the repository's fail-closed secret scanner before any synopsis reaches a
- * remote classifier. The scanner receives the text only through stdin and
- * reports names/line numbers, never the matched value.
+ * Run the repository's fail-closed secret scanner and local sensitive-data
+ * detector before any synopsis reaches a remote classifier. Neither check
+ * returns the matched value; a hit blocks transport instead of masking it.
  */
-async function assertSafeForExternalTransport(text: string): Promise<void> {
+async function assertExternalInputSafe(text: string): Promise<void> {
   let stdout = "";
   try {
     stdout = await new Promise<string>((resolve, reject) => {
@@ -292,18 +322,21 @@ async function assertSafeForExternalTransport(text: string): Promise<void> {
       child.stdin.end(JSON.stringify({ tool_name: "Bash", tool_input: { command: text } }));
     });
   } catch {
-    throw new Error("codex-jev-router: local secret scan failed; external transport is blocked.");
+    throw new Error("codex-jev-router: local external-input scan failed; external transport is blocked.");
   }
   try {
-    if (stdout.trim() === "") return;
-    const result = JSON.parse(stdout);
-    if (result?.hookSpecificOutput?.permissionDecision === "deny") {
-      throw new Error("codex-jev-router: local secret scan denied external transport.");
+    if (stdout.trim() !== "") {
+      const result = JSON.parse(stdout);
+      if (result?.hookSpecificOutput?.permissionDecision === "deny") {
+        throw new Error("codex-jev-router: local secret scan denied external transport.");
+      }
     }
   } catch (error) {
     if (error instanceof Error && error.message.includes("external transport")) throw error;
     throw new Error("codex-jev-router: local secret scan returned an invalid result; external transport is blocked.");
   }
+  const sensitiveKind = sensitiveDataKind(text);
+  if (sensitiveKind) throw new Error(`codex-jev-router: local sensitive-data check blocked ${sensitiveKind}; external transport is blocked.`);
 }
 
 /** Converts a TypeSafe System One response into the router's closed route vocabulary. */
@@ -719,7 +752,7 @@ export function createJevClassifier(model: string, timeoutMs: number): TaskClass
     async classify(input, signal) {
       const apiKey = process.env.TYPESAFE_API_KEY?.trim();
       if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
-      await assertSafeForExternalTransport(input.task);
+      await assertExternalInputSafe(input.task);
       const timeout = AbortSignal.timeout(timeoutMs);
       const combined = AbortSignal.any([signal ?? new AbortController().signal, timeout]);
       const startedAt = performance.now();
@@ -757,9 +790,9 @@ export function createJevClassifier(model: string, timeoutMs: number): TaskClass
 // questions in one request. Observation-only: nothing here changes routing.
 // ---------------------------------------------------------------------------
 
-/** Bounded verifier input: only this local-scanned excerpt is sent to Jev; the full handoff is never persisted. */
+/** Bounded verifier input: transport checks this excerpt for known sensitive patterns; the full handoff is never persisted. */
 export type BoundedHandoffSynopsis = { text: string; byteLength: number; sha256: string };
-/** @deprecated Use BoundedHandoffSynopsis; this value is bounded and locally scanned, not rewritten. */
+/** @deprecated Use BoundedHandoffSynopsis; this value is bounded and checked, not rewritten. */
 export type RedactedHandoffSynopsis = BoundedHandoffSynopsis;
 
 /** One Noul verification of a handoff document; each field is the probability the criterion holds. */
@@ -782,7 +815,7 @@ export interface HandoffVerifier {
   verify(input: BoundedHandoffSynopsis, signal?: AbortSignal): Promise<HandoffVerification>;
 }
 
-/** Creates a bounded, locally scanned handoff excerpt for external classification. */
+/** Creates a bounded handoff excerpt; transport checks known sensitive patterns before sending. */
 export function createBoundedHandoffSynopsis(text: string): BoundedHandoffSynopsis {
   return createBoundedSynopsis(text, 8_000);
 }
@@ -833,7 +866,7 @@ export function createJevHandoffVerifier(model: string, timeoutMs: number): Hand
     async verify(input, signal) {
       const apiKey = process.env.TYPESAFE_API_KEY?.trim();
       if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
-      await assertSafeForExternalTransport(input.text);
+      await assertExternalInputSafe(input.text);
       const timeout = AbortSignal.timeout(timeoutMs);
       const combined = AbortSignal.any([signal ?? new AbortController().signal, timeout]);
       const startedAt = performance.now();
@@ -915,7 +948,7 @@ export type AgentStateInterpretation = {
 };
 
 export type BoundedPaneSnapshot = { text: string; byteLength: number; sha256: string };
-/** @deprecated Use BoundedPaneSnapshot; this value is bounded and locally scanned, not rewritten. */
+/** @deprecated Use BoundedPaneSnapshot; this value is bounded and checked, not rewritten. */
 export type RedactedPaneSnapshot = BoundedPaneSnapshot;
 
 /** Policy-independent state boundary so callers do not depend on the Jev transport. */
@@ -923,7 +956,7 @@ export interface StateClassifier {
   classify(input: BoundedPaneSnapshot, signal?: AbortSignal): Promise<AgentStateInterpretation>;
 }
 
-/** Creates a bounded, locally scanned pane excerpt for external classification. */
+/** Creates a bounded pane excerpt; transport checks known sensitive patterns before sending. */
 export function createBoundedPaneSnapshot(text: string): BoundedPaneSnapshot {
   return createBoundedSynopsis(text, 8_000);
 }
@@ -968,7 +1001,7 @@ export function createJevStateClassifier(model: string, timeoutMs: number): Stat
     async classify(input, signal) {
       const apiKey = process.env.TYPESAFE_API_KEY?.trim();
       if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
-      await assertSafeForExternalTransport(input.text);
+      await assertExternalInputSafe(input.text);
       const timeout = AbortSignal.timeout(timeoutMs);
       const combined = AbortSignal.any([signal ?? new AbortController().signal, timeout]);
       const startedAt = performance.now();
@@ -1054,7 +1087,7 @@ export type FindingsRanking = {
 };
 
 export type BoundedFindingsSynopsis = { text: string; byteLength: number; sha256: string };
-/** @deprecated Use BoundedFindingsSynopsis; this value is bounded and locally scanned, not rewritten. */
+/** @deprecated Use BoundedFindingsSynopsis; this value is bounded and checked, not rewritten. */
 export type RedactedFindingsSynopsis = BoundedFindingsSynopsis;
 
 /** Policy-independent ranking boundary so callers do not depend on the Jev transport. */
@@ -1062,7 +1095,7 @@ export interface SeverityRanker {
   rank(input: BoundedFindingsSynopsis, signal?: AbortSignal): Promise<FindingsRanking>;
 }
 
-/** Creates a bounded, locally scanned findings excerpt; lines are preserved. */
+/** Creates a bounded findings excerpt; lines are preserved and transport checks known sensitive patterns. */
 export function createBoundedFindingsSynopsis(text: string): BoundedFindingsSynopsis {
   const lines = text.split("\n").map((line) => line.replace(/\s+/g, " ").trim()).filter((line) => line.length > 0);
   const kept: string[] = [];
@@ -1118,7 +1151,7 @@ export function createJevSeverityRanker(model: string, timeoutMs: number): Sever
     async rank(input, signal) {
       const apiKey = process.env.TYPESAFE_API_KEY?.trim();
       if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
-      await assertSafeForExternalTransport(input.text);
+      await assertExternalInputSafe(input.text);
       const lines = input.text.split("\n").filter((line) => line.trim().length > 0);
       if (lines.length === 0) throw new Error("codex-jev-router: findings input is empty.");
       const numbered = lines.map((line, i) => `#${i + 1} ${line}`).join("\n");
@@ -1164,6 +1197,9 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   }
 
   function recordDecision(ctx: ExtensionContext, selection: RouterSelection, prompt: string): RouteDecision {
+    // A new decision starts a new run; any previous settled run is no longer
+    // eligible for a later manual feedback label.
+    state.feedbackTarget = undefined;
     const synopsis = createBoundedTaskSynopsis(prompt);
     const route = config?.routes[selection.routeId];
     const decision: RouteDecision = {
@@ -1188,6 +1224,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       state.activeTelemetry.source = decision.source;
       state.activeTelemetry.model = decision.model;
       state.activeTelemetry.thinkingLevel = decision.thinkingLevel;
+      state.activeTelemetry.decisionAt = decision.at;
     }
     if (budgetManager && selection.judgment) {
       budgetManager.recordJev(selection.judgment.inputTokens, selection.judgment.outputTokens);
@@ -1210,14 +1247,15 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
 
   function recordTelemetry(ctx: ExtensionContext): RouteTelemetry | undefined {
     const active = state.activeTelemetry;
-    if (!active || !active.routeId || !active.source) return undefined;
+    if (!active || !active.routeId || !active.source || !active.decisionAt) return undefined;
     const completedAt = new Date().toISOString();
-    const measurement: RouteTelemetry = {
+    const measurement: SettledRouteTelemetry = {
       version: 1,
       sessionId: ctx.sessionManager.getSessionId(),
       startedAt: new Date(active.startedAt).toISOString(),
       completedAt,
       durationMs: Math.max(0, Date.now() - active.startedAt),
+      decisionAt: active.decisionAt,
       routeId: active.routeId,
       source: active.source,
       model: active.model,
@@ -1230,6 +1268,12 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     };
     pi.appendEntry(ROUTER_TELEMETRY_ENTRY, measurement);
     state.lastTelemetry = measurement;
+    if (state.lastDecision && state.lastDecision.at === measurement.decisionAt
+      && state.lastDecision.routeId === measurement.routeId
+      && state.lastDecision.task.sha256 === measurement.task.sha256
+      && state.lastDecision.task.byteLength === measurement.task.byteLength) {
+      state.feedbackTarget = { decision: state.lastDecision, telemetry: measurement };
+    }
     state.activeTelemetry = undefined;
     return measurement;
   }
@@ -1355,6 +1399,9 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
+    // Every submitted task invalidates the previous feedback target. A pinned
+    // task has no routing telemetry and therefore cannot inherit old feedback.
+    state.feedbackTarget = undefined;
     if (!config || configError || !classifier || state.manualSelection) return;
     const requested = state.pendingRoute;
     state.pendingRoute = undefined;
@@ -1446,9 +1493,21 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
           ctx.ui.notify("Use /route feedback correct|wrong", "error");
           return;
         }
-        const decision = state.lastDecision;
+        const target = state.feedbackTarget;
+        const decision = target?.decision;
         if (!decision || decision.sessionId !== ctx.sessionManager.getSessionId()) {
           ctx.ui.notify("No routing decision is recorded for this session.", "error");
+          return;
+        }
+        const telemetry = target.telemetry;
+        const sameSettledRun = !state.activeTelemetry && telemetry !== undefined
+          && telemetry.sessionId === ctx.sessionManager.getSessionId()
+          && telemetry.decisionAt === decision.at
+          && telemetry.routeId === decision.routeId
+          && telemetry.task.sha256 === decision.task.sha256
+          && telemetry.task.byteLength === decision.task.byteLength;
+        if (!sameSettledRun) {
+          ctx.ui.notify("Feedback requires the latest routed task to be settled; no label was recorded.", "error");
           return;
         }
         const feedback: RouteFeedback = {
@@ -1459,7 +1518,9 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
           routeId: decision.routeId,
           source: decision.source,
           decisionAt: decision.at,
-          telemetryAt: state.lastTelemetry?.completedAt,
+          telemetryAt: telemetry.completedAt,
+          startedAt: telemetry.startedAt,
+          task: telemetry.task,
         };
         pi.appendEntry(ROUTER_FEEDBACK_ENTRY, feedback);
         ctx.ui.notify(`Recorded route feedback: ${routeText} (${decision.routeId}).`, "info");
@@ -1513,7 +1574,8 @@ function isPersistedPin(value: unknown): value is PersistedPin {
 }
 function isRouteDecision(value: unknown): value is RouteDecision {
   return isRecord(value) && value.version === 1 && typeof value.sessionId === "string" && isRouteId(value.routeId)
-    && typeof value.source === "string" && typeof value.reason === "string"
+    && isRouteSource(value.source) && typeof value.reason === "string" && typeof value.at === "string"
+    && isRecord(value.task) && isNonNegativeInteger(value.task.byteLength) && typeof value.task.sha256 === "string" && typeof value.task.hardGate === "boolean"
     && (value.rolloutGate === undefined || typeof value.rolloutGate === "boolean")
     && (value.suggestedRouteId === undefined || isRouteId(value.suggestedRouteId));
 }
@@ -1523,6 +1585,7 @@ function isRouteSource(value: unknown): value is RouteSource {
 function isRouteTelemetry(value: unknown): value is RouteTelemetry {
   return isRecord(value) && value.version === 1 && typeof value.sessionId === "string"
     && typeof value.startedAt === "string" && typeof value.completedAt === "string" && typeof value.durationMs === "number" && value.durationMs >= 0
+    && (value.decisionAt === undefined || typeof value.decisionAt === "string")
     && isRouteId(value.routeId) && isRouteSource(value.source)
     && (value.model === undefined || typeof value.model === "string")
     && (value.thinkingLevel === undefined || isThinkingLevel(value.thinkingLevel))
@@ -1534,5 +1597,7 @@ function isRouteFeedback(value: unknown): value is RouteFeedback {
   return isRecord(value) && value.version === 1 && typeof value.sessionId === "string" && typeof value.at === "string"
     && (value.label === "correct" || value.label === "wrong") && isRouteId(value.routeId) && isRouteSource(value.source)
     && (value.decisionAt === undefined || typeof value.decisionAt === "string")
-    && (value.telemetryAt === undefined || typeof value.telemetryAt === "string");
+    && (value.telemetryAt === undefined || typeof value.telemetryAt === "string")
+    && (value.startedAt === undefined || typeof value.startedAt === "string")
+    && (value.task === undefined || (isRecord(value.task) && isNonNegativeInteger(value.task.byteLength) && typeof value.task.sha256 === "string"));
 }

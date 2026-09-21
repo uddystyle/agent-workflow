@@ -91,8 +91,8 @@ const FIXTURES: { name: string; label: Label; text: string }[] = [
     ].join("\n"),
   },
   {
-    name: "has_secret",
-    label: { nextAction: true, fragileAreas: false, pendingDecisions: false, noSecretValue: false },
+    name: "secret_location_only",
+    label: { nextAction: true, fragileAreas: false, pendingDecisions: false, noSecretValue: true },
     text: [
       "次の一手: 本番にデプロイする。",
       "",
@@ -100,7 +100,7 @@ const FIXTURES: { name: string; label: Label; text: string }[] = [
       "",
       "判断待ち: なし。",
       "",
-      "接続情報: stripe sk_live_51H4x9 パスワード hunter2、API key sk-abc123def456 は credential.md に保存してある。",
+      "接続情報: 値は書かない。在処は .env（STRIPE_SECRET_KEY / TYPESAFE_API_KEY）。",
       "",
     ].join("\n"),
   },
@@ -112,7 +112,7 @@ console.log("== Per-document table ==");
 console.log("doc                    next  frag  pend  secret   in/out");
 const rows: { name: string; label: Label; v: Parameters<typeof formatHandoffVerification>[0] }[] = [];
 for (const f of FIXTURES) {
-    const synopsis = createBoundedHandoffSynopsis(f.text);
+  const synopsis = createBoundedHandoffSynopsis(f.text);
   const v = await verifier.verify(synopsis);
   rows.push({ name: f.name, label: f.label, v });
   const cell = (p: number, label: boolean) => `${String(Math.round(p * 100)).padStart(3)}%${predictedAt(p, 0.7) === label ? " " : "!"}`;

@@ -68,13 +68,13 @@ Add an interface, not a provider dependency embedded in policy:
 
 ```ts
 interface TaskClassifier {
-  classify(input: RedactedTaskSynopsis, signal?: AbortSignal): Promise<RouteJudgment>
+  classify(input: BoundedTaskSynopsis, signal?: AbortSignal): Promise<RouteJudgment>
 }
 ```
 
 Implement the selected Jev transport behind it. Bound input bytes, use a strict timeout, no retries by default, schema-validate answers, and map unavailable/malformed/low-confidence outcomes to NORMAL. Classifier calls occur once per unpinned session, not on every turn.
 
-**Implemented（2026-09-19）:** `TaskClassifier.classify(input: RedactedTaskSynopsis, signal?)` を policy 側の境界とし、`createJevClassifier(model, timeoutMs)` が Jev transport を実装する。redaction（`createRedactedTaskSynopsis`）は policy 側に残る。
+**Implemented（2026-09-19）:** `TaskClassifier.classify(input: BoundedTaskSynopsis, signal?)` を policy 側の境界とし、`createJevClassifier(model, timeoutMs)` が Jev transport を実装する。bounded synopsisはknown-sensitive-data検出後だけ外部へ渡し、検出時は送信を止める。
 
 **Exit condition:** fixture tests cover choice mapping, `unclear`, timeout, authentication error, invalid JSON/schema, and cancellation without blocking Pi.
 

@@ -95,6 +95,13 @@ await command.handler("feedback correct", ctx);
 const feedback = entries.findLast((entry) => entry.customType === "codex-jev-router-feedback").data;
 assert.equal(feedback.label, "correct");
 assert.equal(feedback.routeId, "light");
+const feedbackCountBeforeStaleLabel = entries.filter((entry) => entry.customType === "codex-jev-router-feedback").length;
+await command.handler("pin light", ctx);
+await handlers.get("before_agent_start")({ prompt: "A later task executed under the pinned route." }, ctx);
+await handlers.get("agent_settled")({}, ctx);
+await command.handler("feedback wrong", ctx);
+assert.equal(entries.filter((entry) => entry.customType === "codex-jev-router-feedback").length, feedbackCountBeforeStaleLabel, "別decisionへfeedbackを付けない");
+await command.handler("auto", ctx);
 
 // TaskClassifier 境界: createJevClassifier は key なしで失敗し、スタブ fetch で judgment を返す。
 const classifier = extension.createJevClassifier("jev-1.13.0", 5000);
@@ -129,6 +136,15 @@ await assert.rejects(
   /local secret scan denied external transport/,
 );
 assert.equal(blockedClassifierFetches, 0, "秘密検出時はTypeSafe APIへ送信しない");
+await assert.rejects(
+  classifier.classify({ task: ["password", "hunter2"].join(" "), byteLength: 15, sha256: "password" }),
+  /sensitive-data check blocked password/,
+);
+await assert.rejects(
+  classifier.classify({ task: ["customer", "person@example.com"].join(" "), byteLength: 25, sha256: "pii" }),
+  /sensitive-data check blocked email address/,
+);
+assert.equal(blockedClassifierFetches, 0, "password/PII検出時はTypeSafe APIへ送信しない");
 
 // 不正な answer は明示エラーで失敗する。
 globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { route: { choice: "light" } } }) });
@@ -170,6 +186,11 @@ await assert.rejects(
   /local secret scan denied external transport/,
 );
 assert.equal(blockedHandoffFetches, 0, "秘密を含むhandoffはTypeSafe APIへ送信しない");
+await assert.rejects(
+  handoffVerifier.verify(extension.createBoundedHandoffSynopsis(["password", "hunter2"].join(" "))),
+  /sensitive-data check blocked password/,
+);
+assert.equal(blockedHandoffFetches, 0, "passwordを含むhandoffはTypeSafe APIへ送信しない");
 const handoffLine = extension.formatHandoffVerification(handoffV);
 assert.ok(handoffLine.includes("next action: 95%"), "基準ごとの表示");
 assert.ok(handoffLine.includes("pending decisions: 21% (weak)"), "低 probability 基準が weak と出る");
@@ -294,11 +315,11 @@ assert.ok(Math.abs(aggregated.averageConfidence - 0.85) < 1e-9, `averageConfiden
 assert.equal(aggregated.averageElapsedMs, 448);
 assert.equal(extension.aggregateRouteDecisions([]).decisions, 0);
 const measured = extension.aggregateRouteDecisions([], [
-  { version: 1, sessionId: "s1", startedAt: "t", completedAt: "t2", durationMs: 1200, routeId: "light", source: "auto", turns: 2, retries: 1, compactions: 1, userOverride: false, task: { byteLength: 10, sha256: "a" } },
-  { version: 1, sessionId: "s2", startedAt: "t", completedAt: "t3", durationMs: 2400, routeId: "hard", source: "auto", turns: 4, retries: 0, compactions: 0, userOverride: true, task: { byteLength: 12, sha256: "b" } },
+  { version: 1, sessionId: "s1", startedAt: "t", completedAt: "t2", durationMs: 1200, decisionAt: "d1", routeId: "light", source: "auto", turns: 2, retries: 1, compactions: 1, userOverride: false, task: { byteLength: 10, sha256: "a" } },
+  { version: 1, sessionId: "s2", startedAt: "t", completedAt: "t3", durationMs: 2400, decisionAt: "d2", routeId: "hard", source: "auto", turns: 4, retries: 0, compactions: 0, userOverride: true, task: { byteLength: 12, sha256: "b" } },
 ], [
-  { version: 1, sessionId: "s1", at: "t4", label: "correct", routeId: "light", source: "auto" },
-  { version: 1, sessionId: "s2", at: "t5", label: "wrong", routeId: "hard", source: "auto" },
+  { version: 1, sessionId: "s1", at: "t4", label: "correct", routeId: "light", source: "auto", decisionAt: "d1", telemetryAt: "t2", startedAt: "t", task: { byteLength: 10, sha256: "a" } },
+  { version: 1, sessionId: "s2", at: "t5", label: "wrong", routeId: "hard", source: "auto", decisionAt: "d2", telemetryAt: "t3", startedAt: "t", task: { byteLength: 12, sha256: "b" } },
 ]);
 assert.equal(measured.telemetrySamples, 2);
 assert.equal(measured.averageDurationMs, 1800);
@@ -318,13 +339,17 @@ assert.equal(extension.shouldSampleObservation("router-test-session", 1), true);
 sessionDir = mkdtempSync(join(tmpdir(), "router-report-"));
 try {
   writeFileSync(join(sessionDir, "2026-09-19T00-00-01Z_s1.jsonl"), [
-    JSON.stringify({ type: "custom", customType: "codex-jev-router-decision", data: { version: 1, sessionId: "s1", at: "t", routeId: "light", source: "auto", reason: "r", jev: { confidence: 0.9, inputTokens: 273, outputTokens: 20, elapsedMs: 595 } } }),
-    JSON.stringify({ type: "custom", customType: "codex-jev-router-decision", data: { version: 1, sessionId: "s1", at: "t", routeId: "normal", source: "fallback", reason: "r" } }),
-    JSON.stringify({ type: "custom", customType: "codex-jev-router-telemetry", data: { version: 1, sessionId: "s1", startedAt: "t", completedAt: "t2", durationMs: 1200, routeId: "light", source: "auto", turns: 2, retries: 1, compactions: 1, userOverride: false, task: { byteLength: 10, sha256: "a" } } }),
-    JSON.stringify({ type: "custom", customType: "codex-jev-router-feedback", data: { version: 1, sessionId: "s1", at: "t3", label: "correct", routeId: "light", source: "auto" } }),
+    JSON.stringify({ type: "custom", customType: "codex-jev-router-decision", data: { version: 1, sessionId: "s1", at: "t", routeId: "light", source: "auto", reason: "r", task: { byteLength: 10, sha256: "a", hardGate: false }, jev: { confidence: 0.9, inputTokens: 273, outputTokens: 20, elapsedMs: 595 } } }),
+    JSON.stringify({ type: "custom", customType: "codex-jev-router-decision", data: { version: 1, sessionId: "s1", at: "t", routeId: "normal", source: "fallback", reason: "r", task: { byteLength: 8, sha256: "b", hardGate: false } } }),
+    JSON.stringify({ type: "custom", customType: "codex-jev-router-telemetry", data: { version: 1, sessionId: "s1", startedAt: "t", completedAt: "t2", durationMs: 1200, decisionAt: "d1", routeId: "light", source: "auto", turns: 2, retries: 1, compactions: 1, userOverride: false, task: { byteLength: 10, sha256: "a" } } }),
+    JSON.stringify({ type: "custom", customType: "codex-jev-router-feedback", data: { version: 1, sessionId: "s1", at: "t3", label: "correct", routeId: "light", source: "auto", decisionAt: "d1", telemetryAt: "t2", startedAt: "t", task: { byteLength: 10, sha256: "a" } } }),
     "{not-json",
   ].join("\n") + "\n");
-  writeFileSync(join(sessionDir, "2026-09-19T00-00-02Z_s2.jsonl"), JSON.stringify({ type: "custom", customType: "codex-jev-router-decision", data: { version: 1, sessionId: "s2", at: "t", routeId: "light", source: "hard-gate", reason: "r", jev: { confidence: 0.8, inputTokens: 150, outputTokens: 12, elapsedMs: 300 } } }) + "\n");
+  writeFileSync(join(sessionDir, "2026-09-19T00-00-02Z_s2.jsonl"), [
+    JSON.stringify({ type: "custom", customType: "codex-jev-router-decision", data: { version: 1, sessionId: "s2", at: "t", routeId: "light", source: "hard-gate", reason: "r", task: { byteLength: 12, sha256: "c", hardGate: true }, jev: { confidence: 0.8, inputTokens: 150, outputTokens: 12, elapsedMs: 300 } } }),
+    JSON.stringify({ type: "custom", customType: "codex-jev-router-telemetry", data: { version: 1, sessionId: "s2", startedAt: "t", completedAt: "t2", durationMs: 800, routeId: "normal", source: "fallback", turns: 1, retries: 0, compactions: 0, userOverride: false, task: { byteLength: 8, sha256: "legacy" } } }),
+    JSON.stringify({ type: "custom", customType: "codex-jev-router-feedback", data: { version: 1, sessionId: "s2", at: "t3", label: "wrong", routeId: "normal", source: "fallback" } }),
+  ].join("\n") + "\n");
   await command.handler("report", ctx);
   const reportNotify = notifications.filter((n) => n.message.startsWith("Router report:"));
   assert.equal(reportNotify.length, 1);
@@ -335,9 +360,10 @@ try {
   assert.ok(message.includes("sources auto 1 · fallback 1 · hard-gate 1"));
   assert.ok(message.includes("fallback 33.3%"));
   assert.ok(message.includes("Jev 2 calls · 423 in / 32 out · avg conf 0.85 · avg 448ms"));
-  assert.ok(message.includes("measurements 1"));
-  assert.ok(message.includes("feedback correct 1"));
+  assert.ok(message.includes("measurements 2"));
+  assert.ok(message.includes("feedback correct 1 · wrong 1"));
   assert.ok(message.includes("performance light 1 samples/1200ms/2.0 turns"));
+  assert.ok(message.includes("normal 1 samples/800ms/1.0 turns"));
 } finally {
   rmSync(sessionDir, { recursive: true, force: true });
 }
@@ -492,7 +518,10 @@ assert.equal(await extension.resolveRouteCandidate(reg, lunaRoute, undefined), u
 assert.equal(await extension.resolveRouteCandidate(reg, lunaRoute, { resolve: async () => undefined }), undefined, "fallback が undefined なら undefined");
 
 // PiのscopedModels外のrouteは適用しない（registry全体へ抜けない）。
-ctx.scopedModels = [models.get("openai-codex/gpt-5.6-sol"), models.get("openai-codex/gpt-5.6-terra")];
+ctx.scopedModels = [
+  { model: models.get("openai-codex/gpt-5.6-sol"), thinkingLevel: "low" },
+  { model: models.get("openai-codex/gpt-5.6-terra"), thinkingLevel: "medium" },
+];
 ctx.model = models.get("openai-codex/gpt-5.6-terra");
 thinking = "medium";
 await handlers.get("session_start")({}, ctx);
@@ -500,6 +529,21 @@ await command.handler("auto", ctx);
 globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { route: { choice: "hard", confidence: 0.99 } }, usage: { input_tokens: 1, output_tokens: 1 } }) });
 await handlers.get("before_agent_start")({ prompt: "Refactor the module boundary." }, ctx);
 assert.equal(ctx.model.id, "gpt-5.6-terra", "scope外のhard routeへ切り替えない");
+ctx.scopedModels = [
+  { model: models.get("openai-codex/gpt-6-astra"), thinkingLevel: "high" },
+  { model: models.get("openai-codex/gpt-5.6-terra"), thinkingLevel: "medium" },
+];
+ctx.model = models.get("openai-codex/gpt-5.6-terra");
+thinking = "medium";
+await command.handler("auto", ctx);
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { route: { choice: "hard", confidence: 0.99 } }, usage: { input_tokens: 1, output_tokens: 1 } }) });
+await handlers.get("before_agent_start")({ prompt: "Select the scoped hard model." }, ctx);
+assert.equal(ctx.model.id, "gpt-6-astra", "実際のscopedModels shapeからscope内のmodelを選択する");
+ctx.scopedModels = [{ model: models.get("openai-codex/gpt-5.6-terra"), thinkingLevel: "low" }];
+thinking = "medium";
+await command.handler("once normal", ctx);
+await handlers.get("before_agent_start")({ prompt: "Keep the current model." }, ctx);
+assert.equal(thinking, "medium", "scopeで固定されたthinking level外のrouteを適用しない");
 ctx.scopedModels = undefined;
 
 // Project-local opt-out: .codex-jev-router.json の {enabled:false}（v1/v2）で自動ルーティングを止める。
@@ -638,12 +682,24 @@ const resumeEntries = [{
   type: "custom",
   customType: "codex-jev-router-pin",
   data: { version: 1, sessionId: "resume-session", routeId: "light", source: "auto", provider: "openai-codex", model: "gpt-5.6-sol", thinkingLevel: "low" },
+}, {
+  type: "custom",
+  customType: "codex-jev-router-decision",
+  data: { version: 1, sessionId: "resume-session", routeId: "light", source: "auto", reason: "malformed without at/task" },
+}, {
+  type: "custom",
+  customType: "codex-jev-router-decision",
+  data: { version: 1, sessionId: "resume-session", at: "old-decision", routeId: "light", source: "auto", reason: "old settled run", provider: "openai-codex", model: "gpt-5.6-sol", thinkingLevel: "low", task: { byteLength: 3, sha256: "old", hardGate: false } },
+}, {
+  type: "custom",
+  customType: "codex-jev-router-telemetry",
+  data: { version: 1, sessionId: "resume-session", startedAt: "old-start", completedAt: "old-end", durationMs: 100, routeId: "light", source: "auto", turns: 1, retries: 0, compactions: 0, userOverride: false, task: { byteLength: 3, sha256: "old" } },
 }];
 let resumeThinking = "medium";
 const resumeCtx = {
   model: models.get("openai-codex/gpt-5.6-terra"),
   cwd: projectDir,
-  scopedModels: [models.get("openai-codex/gpt-5.6-terra")],
+  scopedModels: [{ model: models.get("openai-codex/gpt-5.6-terra"), thinkingLevel: "medium" }],
   isProjectTrusted: async () => true,
   modelRegistry: { find: (provider, model) => models.get(`${provider}/${model}`) },
   sessionManager: { getSessionId: () => "resume-session", getBranch: () => resumeEntries, getSessionDir: () => undefined },
@@ -651,14 +707,18 @@ const resumeCtx = {
 };
 const resumePi = {
   on(name, handler) { resumeHandlers.set(name, handler); },
-  registerCommand() {},
+  registerCommand(name, value) { if (name === "route") resumeCommand = value; },
   appendEntry(customType, data) { resumeEntries.push({ type: "custom", customType, data }); },
   async setModel(model) { resumeCtx.model = model; return true; },
   setThinkingLevel(level) { resumeThinking = level; },
   getThinkingLevel() { return resumeThinking; },
 };
+let resumeCommand;
 extension.default(resumePi);
 await resumeHandlers.get("session_start")({}, resumeCtx);
+const resumeFeedbackCount = resumeEntries.filter((entry) => entry.customType === "codex-jev-router-feedback").length;
+await resumeCommand.handler("feedback correct", resumeCtx);
+assert.equal(resumeEntries.filter((entry) => entry.customType === "codex-jev-router-feedback").length, resumeFeedbackCount, "resumeした過去runをfeedback対象にしない");
 process.env.TYPESAFE_API_KEY = "router-test-key";
 let resumeJevCalls = 0;
 globalThis.fetch = async () => {

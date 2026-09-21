@@ -29,11 +29,11 @@ These categories are examples for Jev criteria, not literal keyword routing. The
 
 ## Jev question shape
 
-Use one Choice question with `light`, `normal`, `hard`, `very_hard`, and `unclear`; optionally independent Nouls for `security_sensitive`, `migration`, and `ambiguous_requirements`. Supply only the redacted bounded synopsis.
+Use one Choice question with `light`, `normal`, `hard`, `very_hard`, and `unclear`; optionally independent Nouls for `security_sensitive`, `migration`, and `ambiguous_requirements`. Supply only the bounded synopsis after the local known-sensitive-data check; a detected value blocks external transport.
 
 Use `unclear` or low confidence as NORMAL. Confidence is distribution concentration, not evidence that an expensive route is warranted. Record answer probabilities if returned, but do not select on a single arbitrary global threshold before calibration.
 
-実装（2026-09-19）: Choice のみで、Nouls は未実装（security/migration 等は keyword hard gate が拾う）。分類は `TaskClassifier` 境界（`createJevClassifier`）経由で、prompt は redacted synopsis にのみ渡る（commit `c5ca162`, `6a5113c`）。`minimumConfidence: 0.7` を校准済みの値として config に保持する（16 ラベル付きタスクの confidence 実測・閾値スイープで 0.70 を選点。詳細は research.md §11）。確率・token usage は decision entry に記録される（実測は research.md §10）。
+実装（2026-09-19）: Choice のみで、Nouls は未実装（security/migration 等は keyword hard gate が拾う）。分類は `TaskClassifier` 境界（`createJevClassifier`）経由で、prompt はbounded synopsis（known-sensitive-data検出時はfail-closed）にのみ渡る（commit `c5ca162`, `6a5113c`）。`minimumConfidence: 0.7` を校准済みの値として config に保持する（16 ラベル付きタスクの confidence 実測・閾値スイープで 0.70 を選点。詳細は research.md §11）。確率・token usage は decision entry に記録される（実測は research.md §10）。
 
 ## Candidate models and calibration
 

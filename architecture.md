@@ -29,7 +29,7 @@ deterministic policy
   └─ decide whether Jev classification is needed
   │
   ▼
-Jev (bounded, redacted task synopsis; one request)
+Jev (bounded, locally checked task synopsis; one request)
   │
   ▼
 policy maps class + confidence to a configured route
@@ -78,7 +78,7 @@ No automatic OpenAI API fallback is part of this phase. A `GenerationFallback` i
 
 ## Observability boundary
 
-Write JSONL records outside LLM context, either via `pi.appendEntry("codex-route", data)` plus an optional local export file, or both. Record timestamp, Pi session ID, route class, Jev result/confidence, selected provider/model/thinking, override/pin/fallback flags, input synopsis byte count, latency, and provider-reported final usage when present. Keep task summaries redacted and truncated.
+Write JSONL records outside LLM context, either via `pi.appendEntry("codex-route", data)` plus an optional local export file, or both. Record timestamp, Pi session ID, route class, Jev result/confidence, selected provider/model/thinking, override/pin/fallback flags, input synopsis byte count, latency, and provider-reported final usage when present. Keep task summaries bounded and truncated; block known-sensitive inputs locally before external transport.
 
 The ledger distinguishes:
 
@@ -89,7 +89,7 @@ The ledger distinguishes:
 
 ## 実装済み範囲と乖離（2026-09-20）
 
-構成図の流れは prototype で実装済み: one-shot / session override（`/route once|pin`）、session-start の pin 復元、keyword hard gate（→ `hard`）、bounded redacted synopsis（2,000 bytes・sha256・原文非保存）、Jev Choice 分類（1 request・strict timeout・no retry・`TYPESAFE_API_KEY`）を `TaskClassifier` 境界（`createJevClassifier`）経由で実施、confidence 閾値、`setModel()` + `setThinkingLevel()` の検証付き適用、pin/decision の custom entry 永続化、`/route report`（session ディレクトリ走査の decision 集計）、`rollout.enabledRoutes` による段階展開（auto 提案のみ gate・decision に `rolloutGate`/`suggestedRouteId` 記録・report で gated 集計、NORMAL は暗黙に有効、hard-gate/one-shot/pin/manual は対象外）、budget state（`unknown`/`manual`/`estimated`）の quota 永続化（`turn_end` の generation usage + decision の Jev usage を窓ごとに `~/.pi/agent/codex-jev-router-quota.json` へ、`budget.windowHours` で自動ローテーション）、`BudgetManager` 境界（`recordGeneration`/`recordJev`/`line`/`mode` で quota 永続化形式を隠蔽し、`createLocalBudgetManager` が永続化・窓ローテーション・mode リセットを担う。将来の authoritative budget source は同一 interface で実装可能）、`GenerationFallback` 境界（`resolveRouteCandidate` は registry 優先・fail-open、MVP では未設定・無効）、project-local config（`<cwd>/.codex-jev-router.json` の v1 opt-out・v2 `enabled` override / `routes` / `fallbackRoute` 上書き、global の optional `enabled` master switch）、fail-open fallback。実測は research.md §10、quota 実装は §13、opt-out は §14、project-local override 層は §16、interface 化は §17。**router の外**: Handoff 検証（`HandoffVerifier` 境界・`createJevHandoffVerifier`、`createRedactedHandoffSynopsis`、Noul 4 問を 1 request・`handoff-verify.sh`/`.ts`）、Herdr 状態解釈（`StateClassifier` 境界・`createJevStateClassifier`、Noul 5 問・`state-classify.sh`/`.ts`）、code-review findings 重大度順位（`SeverityRanker` 境界・`createJevSeverityRanker`、Score・`review-rank.sh`/`.ts`）は consult boundary として実装・校准済み（observation-only・routing 不変・handoff は research.md §19、状態解釈は §20、重大度順位は §21）。
+構成図の流れは prototype で実装済み: one-shot / session override（`/route once|pin`）、session-start の pin 復元、keyword hard gate（→ `hard`）、bounded locally checked synopsis（2,000 bytes・sha256・原文非保存、known-sensitive inputは外部送信前にblock）、Jev Choice 分類（1 request・strict timeout・no retry・`TYPESAFE_API_KEY`）を `TaskClassifier` 境界（`createJevClassifier`）経由で実施、confidence 閾値、`setModel()` + `setThinkingLevel()` の検証付き適用、pin/decision の custom entry 永続化、`/route report`（session ディレクトリ走査の decision 集計）、`rollout.enabledRoutes` による段階展開（auto 提案のみ gate・decision に `rolloutGate`/`suggestedRouteId` 記録・report で gated 集計、NORMAL は暗黙に有効、hard-gate/one-shot/pin/manual は対象外）、budget state（`unknown`/`manual`/`estimated`）の quota 永続化（`turn_end` の generation usage + decision の Jev usage を窓ごとに `~/.pi/agent/codex-jev-router-quota.json` へ、`budget.windowHours` で自動ローテーション）、`BudgetManager` 境界（`recordGeneration`/`recordJev`/`line`/`mode` で quota 永続化形式を隠蔽し、`createLocalBudgetManager` が永続化・窓ローテーション・mode リセットを担う。将来の authoritative budget source は同一 interface で実装可能）、`GenerationFallback` 境界（`resolveRouteCandidate` は registry 優先・fail-open、MVP では未設定・無効）、project-local config（`<cwd>/.codex-jev-router.json` の v1 opt-out・v2 `enabled` override / `routes` / `fallbackRoute` 上書き、global の optional `enabled` master switch）、fail-open fallback。実測は research.md §10、quota 実装は §13、opt-out は §14、project-local override 層は §16、interface 化は §17。**router の外**: Handoff 検証（`HandoffVerifier` 境界・`createJevHandoffVerifier`、`createBoundedHandoffSynopsis`、Noul 4 問を 1 request・`handoff-verify.sh`/`.ts`）、Herdr 状態解釈（`StateClassifier` 境界・`createJevStateClassifier`、Noul 5 問・`state-classify.sh`/`.ts`）、code-review findings 重大度順位（`SeverityRanker` 境界・`createJevSeverityRanker`、Score・`review-rank.sh`/`.ts`）は consult boundary として実装・校准済み（observation-only・routing 不変・handoff は research.md §19、状態解釈は §20、重大度順位は §21）。
 
 提案からの乖離:
 
