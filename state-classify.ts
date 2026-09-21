@@ -3,14 +3,14 @@
 // Jev Noul 5 問（idle / working / blocked / done / fell-over）で読む。D-19: 状態と中身を別々に引く。
 // 実用は `<agent-name>`（要 HERDR_ENV=1）、校准は `--calibrate`（ラベル付き代表 snapshot + 閾値スイープ、
 // observation-only——解釈は何も gate しない・判定は人がする）。
-// 必須: TYPESAFE_API_KEY（interactive zsh 経由）。
+// Jevを使うunknown判定・校准ではTYPESAFE_API_KEY（interactive zsh 経由）が必要。
 // 実行: bash state-classify.sh <name> | --calibrate
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   createJevStateClassifier,
-  createRedactedPaneSnapshot,
+  createBoundedPaneSnapshot,
   formatStateInterpretation,
 } from "./home/.pi/agent/extensions/codex-jev-router.ts";
 
@@ -19,18 +19,11 @@ type Criterion = (typeof CRITERIA)[number];
 type Label = Record<Criterion, boolean>;
 
 const config = JSON.parse(readFileSync(fileURLToPath(new URL("./home/.pi/agent/codex-jev-router.json", import.meta.url)), "utf8"));
-const apiKey = process.env.TYPESAFE_API_KEY?.trim();
-if (!apiKey) {
-  console.error("state-classify: TYPESAFE_API_KEY is not configured. Run through an interactive shell (zsh -i).");
-  process.exit(1);
-}
-console.error(`state-classify: model=${config.jev.model} timeoutMs=${config.jev.timeoutMs} (${new Date().toISOString()})`);
-
-const classifier = createJevStateClassifier(config.jev.model, config.jev.timeoutMs);
 const mode = process.argv[2];
+const classifier = createJevStateClassifier(config.jev.model, config.jev.timeoutMs);
 
 async function classifyOne(name: string, text: string) {
-  return { name, v: await classifier.classify(createRedactedPaneSnapshot(text)) };
+  return { name, v: await classifier.classify(createBoundedPaneSnapshot(text)) };
 }
 
 // Labeled representative pane snapshots. Labels are the human expectation per state.
@@ -157,6 +150,23 @@ if (mode === "--calibrate") {
     process.exit(1);
   }
   const state = JSON.parse(execFileSync("herdr", ["agent", "get", name], { encoding: "utf8" }));
+  // Jev is a consult only for Herdr's explicit unknown state. Never upload a
+  // pane snapshot merely because an agent exists.
+  const herdrState = typeof state?.state === "string" ? state.state
+    : typeof state?.status === "string" ? state.status : undefined;
+  if (herdrState !== "unknown") {
+    console.log("== herdr agent get ==");
+    console.log(JSON.stringify(state, null, 2));
+    console.log(`state-classify: no Jev call; Herdr state is ${herdrState ?? "unreported"}.`);
+    process.exit(0);
+  }
+  const apiKey = process.env.TYPESAFE_API_KEY?.trim();
+  if (!apiKey) {
+    console.error("state-classify: TYPESAFE_API_KEY is not configured. Run through an interactive shell (zsh -i).");
+    process.exit(1);
+  }
+  console.error(`state-classify: model=${config.jev.model} timeoutMs=${config.jev.timeoutMs} (${new Date().toISOString()})`);
+  const classifier = createJevStateClassifier(config.jev.model, config.jev.timeoutMs);
   const content = execFileSync("herdr", ["agent", "read", name, "--source", "detection", "--lines", "60"], { encoding: "utf8" });
   console.log("== herdr agent get ==");
   console.log(JSON.stringify(state, null, 2));

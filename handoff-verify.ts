@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   createJevHandoffVerifier,
-  createRedactedHandoffSynopsis,
+  createBoundedHandoffSynopsis,
   formatHandoffVerification,
 } from "./home/.pi/agent/extensions/codex-jev-router.ts";
 
@@ -112,7 +112,7 @@ console.log("== Per-document table ==");
 console.log("doc                    next  frag  pend  secret   in/out");
 const rows: { name: string; label: Label; v: Parameters<typeof formatHandoffVerification>[0] }[] = [];
 for (const f of FIXTURES) {
-  const synopsis = createRedactedHandoffSynopsis(f.text);
+    const synopsis = createBoundedHandoffSynopsis(f.text);
   const v = await verifier.verify(synopsis);
   rows.push({ name: f.name, label: f.label, v });
   const cell = (p: number, label: boolean) => `${String(Math.round(p * 100)).padStart(3)}%${predictedAt(p, 0.7) === label ? " " : "!"}`;

@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   createJevSeverityRanker,
-  createRedactedFindingsSynopsis,
+  createBoundedFindingsSynopsis,
   FINDING_SEVERITY_CRITERIA,
   formatFindingsRank,
 } from "./home/.pi/agent/extensions/codex-jev-router.ts";
@@ -74,7 +74,7 @@ if (mode === "--calibrate") {
   console.log(`severity criteria: ${FINDING_SEVERITY_CRITERIA.length} levels (0..${FINDING_SEVERITY_CRITERIA.length - 1})`);
   const all: { axis: string; label: number[]; predicted: number[]; scores: number[]; lines: string[] }[] = [];
   for (const f of FIXTURES) {
-    const { items } = await ranker.rank(createRedactedFindingsSynopsis(f.findings.join("\n")));
+    const { items } = await ranker.rank(createBoundedFindingsSynopsis(f.findings.join("\n")));
     const scores = Array.from({ length: f.findings.length }, (_, i) => items.find((it) => it.index === i + 1)?.score ?? NaN);
     console.log(`\n== ${f.axis} ==`);
     console.log("#  label  score  conf   finding");
@@ -117,7 +117,7 @@ if (mode === "--calibrate") {
     console.error(`review-rank: ${file} に finding がありません（1 行 1 finding）。`);
     process.exit(2);
   }
-  const ranking = await ranker.rank(createRedactedFindingsSynopsis(findings.join("\n")));
+  const ranking = await ranker.rank(createBoundedFindingsSynopsis(findings.join("\n")));
   if (ranking.items.length !== findings.length) {
     console.error(`review-rank: 8,000 char 制限で ${findings.length - ranking.items.length} 件が切れました。軸を分けるか件数を減らしてください。`);
     process.exit(2);

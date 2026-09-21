@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   createJevClassifier,
-  createRedactedTaskSynopsis,
+  createBoundedTaskSynopsis,
   selectJevRoute,
 } from "./home/.pi/agent/extensions/codex-jev-router.ts";
 
@@ -61,7 +61,7 @@ console.error(`jev-calibration: model=${config.jev.model} timeoutMs=${config.jev
 const classifier = createJevClassifier(config.jev.model, config.jev.timeoutMs);
 const trials: Trial[] = [];
 for (const [index, t] of TASKS.entries()) {
-  const synopsis = createRedactedTaskSynopsis(t.task);
+  const synopsis = createBoundedTaskSynopsis(t.task);
   const judgment = await classifier.classify(synopsis);
   trials.push({ label: t.label, task: t.task, routeId: judgment.routeId, confidence: judgment.confidence, inputTokens: judgment.inputTokens, outputTokens: judgment.outputTokens, elapsedMs: judgment.elapsedMs });
   console.error(`  [${String(index + 1).padStart(2)}] ${t.label.padEnd(9)} -> ${judgment.routeId.padEnd(9)} conf=${judgment.confidence.toFixed(2)} ${judgment.inputTokens ?? "?"}in/${judgment.outputTokens ?? "?"}out ${judgment.elapsedMs}ms`);

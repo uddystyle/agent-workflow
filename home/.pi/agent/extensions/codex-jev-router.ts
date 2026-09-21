@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,7 @@ const ROUTER_CONFIG_PATH = fileURLToPath(new URL("../codex-jev-router.json", imp
 const ROUTER_PIN_ENTRY = "codex-jev-router-pin";
 const ROUTER_DECISION_ENTRY = "codex-jev-router-decision";
 const ROUTER_VERSION = 1;
+const SECRET_SCANNER = fileURLToPath(new URL("./secret-scan/secret-scan.sh", import.meta.url));
 
 export type CodexRouteId = "light" | "normal" | "hard" | "very-hard";
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -82,12 +84,14 @@ type JevRouteJudgment = {
   elapsedMs: number;
 };
 
-/** Bounded classifier input: the original prompt text is never persisted or transmitted beyond this redaction. */
-export type RedactedTaskSynopsis = { task: string; byteLength: number; sha256: string };
+/** Bounded classifier input: only this local-scanned excerpt is sent to Jev; the full prompt is never persisted. */
+export type BoundedTaskSynopsis = { task: string; byteLength: number; sha256: string };
+/** @deprecated Bounded inputs are length-limited, not secret-redacted. */
+export type RedactedTaskSynopsis = BoundedTaskSynopsis;
 
 /** Policy-agnostic classifier boundary so routing logic does not depend on the Jev transport. */
 export interface TaskClassifier {
-  classify(input: RedactedTaskSynopsis, signal?: AbortSignal): Promise<JevRouteJudgment>;
+  classify(input: BoundedTaskSynopsis, signal?: AbortSignal): Promise<JevRouteJudgment>;
 }
 
 /**
@@ -106,6 +110,16 @@ export interface GenerationFallback<TModel> {
 /** Resolves the effective candidate for a route: primary registry lookup first, then the inert fallback boundary, else undefined. */
 export async function resolveRouteCandidate<TModel>(registry: { find(provider: string, model: string): TModel | undefined }, route: ModelRoute, fallback: GenerationFallback<TModel> | undefined): Promise<TModel | undefined> {
   return registry.find(route.provider, route.model) ?? (fallback ? await fallback.resolve(route) : undefined);
+}
+
+/** Resolve only models visible in Pi's current provider/authentication scope. */
+async function resolveScopedRouteCandidate(ctx: ExtensionContext, route: ModelRoute, fallback: GenerationFallback<any> | undefined): Promise<any | undefined> {
+  const scoped = (ctx as ExtensionContext & { scopedModels?: unknown }).scopedModels;
+  if (Array.isArray(scoped) && scoped.length > 0) {
+    const candidate = scoped.find((model) => isRecord(model) && model.provider === route.provider && model.id === route.model);
+    return candidate ?? undefined;
+  }
+  return resolveRouteCandidate(ctx.modelRegistry, route, fallback);
 }
 
 type RouterSelection = {
@@ -179,7 +193,7 @@ export function applyRolloutGate(suggested: CodexRouteId, enabledRoutes: readonl
   return { routeId: "normal", suggestedRouteId: suggested, gated: true };
 }
 
-/** Shared bounded synopsis: whitespace-normalized, sliced to limit chars; the original text is never persisted. */
+/** Shared bounded synopsis: whitespace-normalized and sliced. This is not a secret scrubber. */
 function createBoundedSynopsis(text: string, limitChars: number): { text: string; byteLength: number; sha256: string } {
   const normalized = text.replace(/\s+/g, " ").trim();
   const snippet = normalized.slice(0, limitChars);
@@ -191,9 +205,41 @@ function createBoundedSynopsis(text: string, limitChars: number): { text: string
 }
 
 /** Redacts a user task into a bounded classifier input; the original prompt is never persisted. */
-export function createRedactedTaskSynopsis(prompt: string): RedactedTaskSynopsis {
+export function createBoundedTaskSynopsis(prompt: string): BoundedTaskSynopsis {
   const bounded = createBoundedSynopsis(prompt, 2_000);
   return { task: bounded.text, byteLength: bounded.byteLength, sha256: bounded.sha256 };
+}
+/** @deprecated Use createBoundedTaskSynopsis; this function does not redact secrets. */
+export const createRedactedTaskSynopsis = createBoundedTaskSynopsis;
+
+/**
+ * Run the repository's fail-closed secret scanner before any synopsis reaches a
+ * remote classifier. The scanner receives the text only through stdin and
+ * reports names/line numbers, never the matched value.
+ */
+async function assertSafeForExternalTransport(text: string): Promise<void> {
+  let stdout = "";
+  try {
+    stdout = await new Promise<string>((resolve, reject) => {
+      const child = spawn("bash", [SECRET_SCANNER], { stdio: ["pipe", "pipe", "ignore"] });
+      child.stdout.on("data", (chunk) => { stdout += String(chunk); });
+      child.on("error", reject);
+      child.on("close", (code) => code === 0 ? resolve(stdout) : reject(new Error("scanner failed")));
+      child.stdin.end(JSON.stringify({ tool_name: "Bash", tool_input: { command: text } }));
+    });
+  } catch {
+    throw new Error("codex-jev-router: local secret scan failed; external transport is blocked.");
+  }
+  try {
+    if (stdout.trim() === "") return;
+    const result = JSON.parse(stdout);
+    if (result?.hookSpecificOutput?.permissionDecision === "deny") {
+      throw new Error("codex-jev-router: local secret scan denied external transport.");
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("external transport")) throw error;
+    throw new Error("codex-jev-router: local secret scan returned an invalid result; external transport is blocked.");
+  }
 }
 
 /** Converts a TypeSafe System One response into the router's closed route vocabulary. */
@@ -540,6 +586,7 @@ export function createJevClassifier(model: string, timeoutMs: number): TaskClass
     async classify(input, signal) {
       const apiKey = process.env.TYPESAFE_API_KEY?.trim();
       if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
+      await assertSafeForExternalTransport(input.task);
       const timeout = AbortSignal.timeout(timeoutMs);
       const combined = AbortSignal.any([signal ?? new AbortController().signal, timeout]);
       const startedAt = performance.now();
@@ -577,8 +624,10 @@ export function createJevClassifier(model: string, timeoutMs: number): TaskClass
 // questions in one request. Observation-only: nothing here changes routing.
 // ---------------------------------------------------------------------------
 
-/** Bounded verifier input: the handoff text is truncated to 8,000 chars; only hash/bytes of the full text are retained for records. */
-export type RedactedHandoffSynopsis = { text: string; byteLength: number; sha256: string };
+/** Bounded verifier input: only this local-scanned excerpt is sent to Jev; the full handoff is never persisted. */
+export type BoundedHandoffSynopsis = { text: string; byteLength: number; sha256: string };
+/** @deprecated Use BoundedHandoffSynopsis; this value is bounded and locally scanned, not rewritten. */
+export type RedactedHandoffSynopsis = BoundedHandoffSynopsis;
 
 /** One Noul verification of a handoff document; each field is the probability the criterion holds. */
 export type HandoffVerification = {
@@ -597,13 +646,15 @@ export type HandoffVerification = {
 
 /** Policy-independent verifier boundary so callers do not depend on the Jev transport. */
 export interface HandoffVerifier {
-  verify(input: RedactedHandoffSynopsis, signal?: AbortSignal): Promise<HandoffVerification>;
+  verify(input: BoundedHandoffSynopsis, signal?: AbortSignal): Promise<HandoffVerification>;
 }
 
-/** Redacts a handoff doc into a bounded verifier input; the original text is never persisted. */
-export function createRedactedHandoffSynopsis(text: string): RedactedHandoffSynopsis {
+/** Creates a bounded, locally scanned handoff excerpt for external classification. */
+export function createBoundedHandoffSynopsis(text: string): BoundedHandoffSynopsis {
   return createBoundedSynopsis(text, 8_000);
 }
+/** @deprecated Use createBoundedHandoffSynopsis. */
+export const createRedactedHandoffSynopsis = createBoundedHandoffSynopsis;
 
 /** Reads one System One Noul answer as a probability; rejects malformed or out-of-range values. */
 function readNoulProbability(answers: Record<string, unknown>, id: string, what: string): number {
@@ -649,6 +700,7 @@ export function createJevHandoffVerifier(model: string, timeoutMs: number): Hand
     async verify(input, signal) {
       const apiKey = process.env.TYPESAFE_API_KEY?.trim();
       if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
+      await assertSafeForExternalTransport(input.text);
       const timeout = AbortSignal.timeout(timeoutMs);
       const combined = AbortSignal.any([signal ?? new AbortController().signal, timeout]);
       const startedAt = performance.now();
@@ -729,17 +781,21 @@ export type AgentStateInterpretation = {
   elapsedMs: number;
 };
 
-export type RedactedPaneSnapshot = { text: string; byteLength: number; sha256: string };
+export type BoundedPaneSnapshot = { text: string; byteLength: number; sha256: string };
+/** @deprecated Use BoundedPaneSnapshot; this value is bounded and locally scanned, not rewritten. */
+export type RedactedPaneSnapshot = BoundedPaneSnapshot;
 
 /** Policy-independent state boundary so callers do not depend on the Jev transport. */
 export interface StateClassifier {
-  classify(input: RedactedPaneSnapshot, signal?: AbortSignal): Promise<AgentStateInterpretation>;
+  classify(input: BoundedPaneSnapshot, signal?: AbortSignal): Promise<AgentStateInterpretation>;
 }
 
-/** Redacts a pane snapshot into a bounded classifier input; the original content is never persisted. */
-export function createRedactedPaneSnapshot(text: string): RedactedPaneSnapshot {
+/** Creates a bounded, locally scanned pane excerpt for external classification. */
+export function createBoundedPaneSnapshot(text: string): BoundedPaneSnapshot {
   return createBoundedSynopsis(text, 8_000);
 }
+/** @deprecated Use createBoundedPaneSnapshot. */
+export const createRedactedPaneSnapshot = createBoundedPaneSnapshot;
 
 /** Converts a TypeSafe System One Noul response into five state probabilities. */
 export function parseStateNoulAnswers(value: unknown, elapsedMs: number): AgentStateInterpretation {
@@ -779,6 +835,7 @@ export function createJevStateClassifier(model: string, timeoutMs: number): Stat
     async classify(input, signal) {
       const apiKey = process.env.TYPESAFE_API_KEY?.trim();
       if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
+      await assertSafeForExternalTransport(input.text);
       const timeout = AbortSignal.timeout(timeoutMs);
       const combined = AbortSignal.any([signal ?? new AbortController().signal, timeout]);
       const startedAt = performance.now();
@@ -863,15 +920,17 @@ export type FindingsRanking = {
   elapsedMs: number;
 };
 
-export type RedactedFindingsSynopsis = { text: string; byteLength: number; sha256: string };
+export type BoundedFindingsSynopsis = { text: string; byteLength: number; sha256: string };
+/** @deprecated Use BoundedFindingsSynopsis; this value is bounded and locally scanned, not rewritten. */
+export type RedactedFindingsSynopsis = BoundedFindingsSynopsis;
 
 /** Policy-independent ranking boundary so callers do not depend on the Jev transport. */
 export interface SeverityRanker {
-  rank(input: RedactedFindingsSynopsis, signal?: AbortSignal): Promise<FindingsRanking>;
+  rank(input: BoundedFindingsSynopsis, signal?: AbortSignal): Promise<FindingsRanking>;
 }
 
-/** Redacts one axis's findings (one per line) into a bounded input; lines are preserved, the original text is never persisted. */
-export function createRedactedFindingsSynopsis(text: string): RedactedFindingsSynopsis {
+/** Creates a bounded, locally scanned findings excerpt; lines are preserved. */
+export function createBoundedFindingsSynopsis(text: string): BoundedFindingsSynopsis {
   const lines = text.split("\n").map((line) => line.replace(/\s+/g, " ").trim()).filter((line) => line.length > 0);
   const kept: string[] = [];
   let total = 0;
@@ -883,6 +942,8 @@ export function createRedactedFindingsSynopsis(text: string): RedactedFindingsSy
   const snippet = kept.join("\n");
   return { text: snippet, byteLength: Buffer.byteLength(snippet), sha256: createHash("sha256").update(snippet).digest("hex") };
 }
+/** @deprecated Use createBoundedFindingsSynopsis. */
+export const createRedactedFindingsSynopsis = createBoundedFindingsSynopsis;
 
 /** Converts a TypeSafe System One Score response into per-finding severities. */
 export function parseFindingsRank(value: unknown, elapsedMs: number, expectedCount: number): FindingsRanking {
@@ -924,6 +985,7 @@ export function createJevSeverityRanker(model: string, timeoutMs: number): Sever
     async rank(input, signal) {
       const apiKey = process.env.TYPESAFE_API_KEY?.trim();
       if (!apiKey) throw new Error("codex-jev-router: TYPESAFE_API_KEY is not configured.");
+      await assertSafeForExternalTransport(input.text);
       const lines = input.text.split("\n").filter((line) => line.trim().length > 0);
       if (lines.length === 0) throw new Error("codex-jev-router: findings input is empty.");
       const numbered = lines.map((line, i) => `#${i + 1} ${line}`).join("\n");
@@ -969,7 +1031,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   }
 
   function recordDecision(ctx: ExtensionContext, selection: RouterSelection, prompt: string): RouteDecision {
-    const synopsis = createRedactedTaskSynopsis(prompt);
+    const synopsis = createBoundedTaskSynopsis(prompt);
     const route = config?.routes[selection.routeId];
     const decision: RouteDecision = {
       version: 1,
@@ -998,7 +1060,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   async function applyRoute(routeId: CodexRouteId, source: RouteSource, reason: string, ctx: ExtensionContext, prompt = "", judgment?: JevRouteJudgment, rollout?: RouterSelection["rollout"]): Promise<boolean> {
     if (!config) return false;
     const route = config.routes[routeId];
-    const candidate = await resolveRouteCandidate(ctx.modelRegistry, route, fallback);
+    const candidate = await resolveScopedRouteCandidate(ctx, route, fallback);
     if (!candidate) return false;
     state.applyingRoute = true;
     try {
@@ -1016,22 +1078,45 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     }
   }
 
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", async (_event, ctx) => {
     state = { applyingRoute: false, manualSelection: false, optedOut: false, projectOverrides: false };
     config = globalConfig;
     if (!config) {
       ctx.ui.setStatus("codex-jev-router", "Route: unavailable (invalid configuration)");
       return;
     }
-    const resolved = applyProjectLocalConfig(config, readProjectConfig(ctx.cwd));
+    // Project files are untrusted input. Older Pi test doubles do not expose
+    // the trust API; real Pi does, and an explicit false always wins.
+    const trustCheck = (ctx as ExtensionContext & { isProjectTrusted?: () => boolean | Promise<boolean> }).isProjectTrusted;
+    // If the runtime cannot prove trust, do not read project-controlled routing config.
+    const trusted = trustCheck ? await trustCheck.call(ctx) : false;
+    const resolved = applyProjectLocalConfig(config, trusted ? readProjectConfig(ctx.cwd) : undefined);
     config = resolved.config;
     state.optedOut = resolved.optedOut;
     state.projectOverrides = resolved.projectOverrides;
     const sessionId = ctx.sessionManager.getSessionId();
     for (const entry of ctx.sessionManager.getBranch()) {
       if (entry.type !== "custom" || entry.customType !== ROUTER_PIN_ENTRY || !isPersistedPin(entry.data) || entry.data.sessionId !== sessionId) continue;
-      state.pin = entry.data;
-      state.manualSelection = entry.data.source === "manual";
+      const pin = entry.data;
+      const pinRoute = pin.source === "manual"
+        ? { provider: pin.provider, model: pin.model, thinkingLevel: pin.thinkingLevel }
+        : config.routes[pin.routeId];
+      const routeMatches = pin.source === "manual"
+        || (pinRoute.provider === pin.provider && pinRoute.model === pin.model && pinRoute.thinkingLevel === pin.thinkingLevel);
+      const candidate = routeMatches ? await resolveScopedRouteCandidate(ctx, pinRoute, undefined) : undefined;
+      let thinkingSupported = false;
+      if (candidate) {
+        try {
+          pi.setThinkingLevel(pin.thinkingLevel);
+          thinkingSupported = pi.getThinkingLevel() === pin.thinkingLevel;
+        } catch {
+          thinkingSupported = false;
+        }
+      }
+      if (candidate && thinkingSupported) {
+        state.pin = pin;
+        state.manualSelection = pin.source === "manual";
+      }
     }
     for (const entry of ctx.sessionManager.getBranch()) {
       if (entry.type === "custom" && entry.customType === ROUTER_DECISION_ENTRY && isRouteDecision(entry.data) && entry.data.sessionId === sessionId) state.lastDecision = entry.data;
@@ -1082,7 +1167,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       return;
     }
     try {
-      const judgment = await classifier.classify(createRedactedTaskSynopsis(event.prompt), ctx.signal ?? new AbortController().signal);
+      const judgment = await classifier.classify(createBoundedTaskSynopsis(event.prompt), ctx.signal ?? new AbortController().signal);
       const selection = selectJevRoute(judgment, config.jev.minimumConfidence, config.fallbackRoute);
       const gate = applyRolloutGate(selection.routeId, config.rollout.enabledRoutes);
       const routed = gate.gated ? { ...selection, routeId: gate.routeId, rollout: { suggestedRouteId: gate.suggestedRouteId, gated: true } } : selection;

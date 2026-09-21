@@ -30,6 +30,8 @@ const models = new Map([
 const ctx = {
   model: models.get("openai-codex/gpt-5.6-terra"),
   cwd: projectDir,
+  scopedModels: undefined,
+  isProjectTrusted: async () => true,
   modelRegistry: { find: (provider, model) => models.get(`${provider}/${model}`) },
   sessionManager: { getSessionId: () => "router-test-session", getBranch: () => entries, getSessionDir: () => sessionDir },
   ui: { setStatus() {}, notify(message, level) { notifications.push({ message, level }); } },
@@ -102,6 +104,19 @@ assert.equal(requestBody.model, "jev-1.13.0");
 assert.equal(requestBody.state.task, "Implement a bounded refactor.");
 assert.equal(requestBody.questions.route.type, "choice");
 
+// 外部送信前のローカル secret scan: 検出時は fetch せず fail-closed。
+const fakeStripeSecret = ["sk_live_", "A".repeat(24)].join("");
+let blockedClassifierFetches = 0;
+globalThis.fetch = async () => {
+  blockedClassifierFetches += 1;
+  throw new Error("secret-bearing classifier input must not reach fetch");
+};
+await assert.rejects(
+  classifier.classify({ task: `Authorization: Bearer ${fakeStripeSecret}`, byteLength: 40, sha256: "secret" }),
+  /local secret scan denied external transport/,
+);
+assert.equal(blockedClassifierFetches, 0, "秘密検出時はTypeSafe APIへ送信しない");
+
 // 不正な answer は明示エラーで失敗する。
 globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { route: { choice: "light" } } }) });
 await assert.rejects(classifier.classify({ task: "hi", byteLength: 2, sha256: "z" }), /malformed/);
@@ -131,6 +146,17 @@ assert.equal(handoffBody.questions.next_action.type, "noul");
 assert.equal(handoffBody.questions.fragile_areas.type, "noul");
 assert.equal(handoffBody.questions.pending_decisions.type, "noul");
 assert.equal(handoffBody.questions.no_secret_value.type, "noul");
+const fakeAssignedSecret = ["STRIPE_SECRET_KEY=", "B".repeat(40)].join("");
+let blockedHandoffFetches = 0;
+globalThis.fetch = async () => {
+  blockedHandoffFetches += 1;
+  throw new Error("secret-bearing handoff must not reach fetch");
+};
+await assert.rejects(
+  handoffVerifier.verify(extension.createBoundedHandoffSynopsis(fakeAssignedSecret)),
+  /local secret scan denied external transport/,
+);
+assert.equal(blockedHandoffFetches, 0, "秘密を含むhandoffはTypeSafe APIへ送信しない");
 const handoffLine = extension.formatHandoffVerification(handoffV);
 assert.ok(handoffLine.includes("next action: 95%"), "基準ごとの表示");
 assert.ok(handoffLine.includes("pending decisions: 21% (weak)"), "低 probability 基準が weak と出る");
@@ -425,6 +451,17 @@ assert.deepEqual(await extension.resolveRouteCandidate(reg, lunaRoute, { resolve
 assert.equal(await extension.resolveRouteCandidate(reg, lunaRoute, undefined), undefined, "MVP は fallback 無しで undefined");
 assert.equal(await extension.resolveRouteCandidate(reg, lunaRoute, { resolve: async () => undefined }), undefined, "fallback が undefined なら undefined");
 
+// PiのscopedModels外のrouteは適用しない（registry全体へ抜けない）。
+ctx.scopedModels = [models.get("openai-codex/gpt-5.6-sol"), models.get("openai-codex/gpt-5.6-terra")];
+ctx.model = models.get("openai-codex/gpt-5.6-terra");
+thinking = "medium";
+await handlers.get("session_start")({}, ctx);
+await command.handler("auto", ctx);
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ answers: { route: { choice: "hard", confidence: 0.99 } }, usage: { input_tokens: 1, output_tokens: 1 } }) });
+await handlers.get("before_agent_start")({ prompt: "Refactor the module boundary." }, ctx);
+assert.equal(ctx.model.id, "gpt-5.6-terra", "scope外のhard routeへ切り替えない");
+ctx.scopedModels = undefined;
+
 // Project-local opt-out: .codex-jev-router.json の {enabled:false}（v1/v2）で自動ルーティングを止める。
 assert.equal(extension.parseProjectOptOut({ version: 1, enabled: false }), true);
 assert.equal(extension.parseProjectOptOut({ version: 1, enabled: true }), false);
@@ -504,6 +541,26 @@ try {
   rmSync(optOutDir, { recursive: true, force: true });
 }
 
+// trust APIがfalseなら、project-local route overrideを読まない。
+const untrustedDir = mkdtempSync(join(tmpdir(), "router-untrusted-"));
+try {
+  writeFileSync(join(untrustedDir, ".codex-jev-router.json"), JSON.stringify({
+    version: 2,
+    enabled: true,
+    routes: { light: { provider: "openai-codex", model: "gpt-5.6-terra", thinkingLevel: "low" } },
+  }));
+  ctx.cwd = untrustedDir;
+  ctx.isProjectTrusted = async () => false;
+  await handlers.get("session_start")({}, ctx);
+  await command.handler("once light", ctx);
+  await handlers.get("before_agent_start")({ prompt: "Format the README heading." }, ctx);
+  assert.equal(ctx.model.id, "gpt-5.6-sol", "untrusted projectのroute overrideを無視");
+} finally {
+  ctx.cwd = projectDir;
+  ctx.isProjectTrusted = async () => true;
+  rmSync(untrustedDir, { recursive: true, force: true });
+}
+
 // Project-local route 上書き: v2 config が routes/fallbackRoute を部分上書きし、auto/fallback 経路に反映される。
 const overriddenDir = mkdtempSync(join(tmpdir(), "router-override-"));
 try {
@@ -534,6 +591,44 @@ try {
   ctx.cwd = projectDir;
   rmSync(overriddenDir, { recursive: true, force: true });
 }
+
+// resume時に現scopeから外れた古いpinは復元せず、次のtaskを再分類する。
+const resumeHandlers = new Map();
+const resumeEntries = [{
+  type: "custom",
+  customType: "codex-jev-router-pin",
+  data: { version: 1, sessionId: "resume-session", routeId: "light", source: "auto", provider: "openai-codex", model: "gpt-5.6-sol", thinkingLevel: "low" },
+}];
+let resumeThinking = "medium";
+const resumeCtx = {
+  model: models.get("openai-codex/gpt-5.6-terra"),
+  cwd: projectDir,
+  scopedModels: [models.get("openai-codex/gpt-5.6-terra")],
+  isProjectTrusted: async () => true,
+  modelRegistry: { find: (provider, model) => models.get(`${provider}/${model}`) },
+  sessionManager: { getSessionId: () => "resume-session", getBranch: () => resumeEntries, getSessionDir: () => undefined },
+  ui: { setStatus() {}, notify() {} },
+};
+const resumePi = {
+  on(name, handler) { resumeHandlers.set(name, handler); },
+  registerCommand() {},
+  appendEntry(customType, data) { resumeEntries.push({ type: "custom", customType, data }); },
+  async setModel(model) { resumeCtx.model = model; return true; },
+  setThinkingLevel(level) { resumeThinking = level; },
+  getThinkingLevel() { return resumeThinking; },
+};
+extension.default(resumePi);
+await resumeHandlers.get("session_start")({}, resumeCtx);
+process.env.TYPESAFE_API_KEY = "router-test-key";
+let resumeJevCalls = 0;
+globalThis.fetch = async () => {
+  resumeJevCalls += 1;
+  return { ok: true, json: async () => ({ answers: { route: { choice: "normal", confidence: 0.9 } }, usage: { input_tokens: 1, output_tokens: 1 } }) };
+};
+await resumeHandlers.get("before_agent_start")({ prompt: "Continue the ordinary implementation." }, resumeCtx);
+assert.equal(resumeJevCalls, 1, "無効なresume pin後は再分類する");
+assert.equal(resumeCtx.model.id, "gpt-5.6-terra", "resume後はscope内のnormal routeを適用する");
+
 rmSync(projectDir, { recursive: true, force: true });
 NODE
 
