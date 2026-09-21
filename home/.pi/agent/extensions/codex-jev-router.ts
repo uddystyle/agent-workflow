@@ -9,6 +9,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 const ROUTER_CONFIG_PATH = fileURLToPath(new URL("../codex-jev-router.json", import.meta.url));
 const ROUTER_PIN_ENTRY = "codex-jev-router-pin";
 const ROUTER_DECISION_ENTRY = "codex-jev-router-decision";
+const ROUTER_TELEMETRY_ENTRY = "codex-jev-router-telemetry";
+const ROUTER_FEEDBACK_ENTRY = "codex-jev-router-feedback";
 const ROUTER_VERSION = 1;
 const SECRET_SCANNER = fileURLToPath(new URL("./secret-scan/secret-scan.sh", import.meta.url));
 
@@ -48,6 +50,7 @@ type RouterConfig = {
   rollout: { enabledRoutes: CodexRouteId[] };
   budget: { mode: BudgetMode; windowHours: number; softLimitTokens: number };
   jev: { model: string; timeoutMs: number; minimumConfidence: number };
+  observation: { sampleRate: number };
 };
 
 type RouteDecision = {
@@ -64,6 +67,34 @@ type RouteDecision = {
   rolloutGate?: boolean;
   suggestedRouteId?: CodexRouteId;
   task: { byteLength: number; sha256: string; hardGate: boolean };
+};
+
+export type RouteTelemetry = {
+  version: 1;
+  sessionId: string;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  routeId: CodexRouteId;
+  source: RouteSource;
+  model?: string;
+  thinkingLevel?: ThinkingLevel;
+  turns: number;
+  retries: number;
+  compactions: number;
+  userOverride: boolean;
+  task: { byteLength: number; sha256: string };
+};
+
+export type RouteFeedback = {
+  version: 1;
+  sessionId: string;
+  at: string;
+  label: "correct" | "wrong";
+  routeId: CodexRouteId;
+  source: RouteSource;
+  decisionAt?: string;
+  telemetryAt?: string;
 };
 
 type PersistedPin = {
@@ -138,6 +169,20 @@ type RouterSessionState = {
   manualSelection: boolean;
   optedOut: boolean;
   projectOverrides: boolean;
+  observation: boolean;
+  activeTelemetry?: {
+    startedAt: number;
+    routeId?: CodexRouteId;
+    source?: RouteSource;
+    model?: string;
+    thinkingLevel?: ThinkingLevel;
+    task: { byteLength: number; sha256: string };
+    turns: number;
+    retries: number;
+    compactions: number;
+    userOverride: boolean;
+  };
+  lastTelemetry?: RouteTelemetry;
 };
 
 const routeIds: readonly CodexRouteId[] = ["light", "normal", "hard", "very-hard"];
@@ -160,13 +205,32 @@ export function parseCodexRouterConfig(value: unknown): RouterConfig {
     || !isRecord(value.rollout) || !isRouteIdArray(value.rollout.enabledRoutes)
     || !isRecord(value.budget) || !isBudgetMode(value.budget.mode) || !isPositiveInteger(value.budget.windowHours) || !isNonNegativeInteger(value.budget.softLimitTokens)
     || typeof value.jev.model !== "string" || !isPositiveInteger(value.jev.timeoutMs)
-    || typeof value.jev.minimumConfidence !== "number" || value.jev.minimumConfidence < 0 || value.jev.minimumConfidence > 1) {
-    throw new Error("codex-jev-router: fallbackRoute, hardGate, rollout, budget, or jev settings are invalid.");
+    || typeof value.jev.minimumConfidence !== "number" || value.jev.minimumConfidence < 0 || value.jev.minimumConfidence > 1
+    || (value.observation !== undefined && (!isRecord(value.observation) || typeof value.observation.sampleRate !== "number" || value.observation.sampleRate < 0 || value.observation.sampleRate > 1))) {
+    throw new Error("codex-jev-router: fallbackRoute, hardGate, rollout, budget, jev, or observation settings are invalid.");
   }
   if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
     throw new Error("codex-jev-router: enabled must be a boolean when present.");
   }
-  return { version: 1, enabled: value.enabled === false ? false : true, routes, fallbackRoute: value.fallbackRoute, hardGate: { patterns: value.hardGate.patterns }, rollout: { enabledRoutes: value.rollout.enabledRoutes }, budget: { mode: value.budget.mode, windowHours: value.budget.windowHours, softLimitTokens: value.budget.softLimitTokens }, jev: { model: value.jev.model, timeoutMs: value.jev.timeoutMs, minimumConfidence: value.jev.minimumConfidence } };
+  return {
+    version: 1,
+    enabled: value.enabled === false ? false : true,
+    routes,
+    fallbackRoute: value.fallbackRoute,
+    hardGate: { patterns: value.hardGate.patterns },
+    rollout: { enabledRoutes: value.rollout.enabledRoutes },
+    budget: { mode: value.budget.mode, windowHours: value.budget.windowHours, softLimitTokens: value.budget.softLimitTokens },
+    jev: { model: value.jev.model, timeoutMs: value.jev.timeoutMs, minimumConfidence: value.jev.minimumConfidence },
+    observation: { sampleRate: value.observation?.sampleRate ?? 0 },
+  };
+}
+
+/** Deterministic session sampling keeps an observation cohort stable across reloads. */
+export function shouldSampleObservation(sessionId: string, sampleRate: number): boolean {
+  if (sampleRate <= 0) return false;
+  if (sampleRate >= 1) return true;
+  const bucket = Number.parseInt(createHash("sha256").update(`codex-jev-observation:${sessionId}`).digest("hex").slice(0, 12), 16) / 0xffffffffffff;
+  return bucket < sampleRate;
 }
 
 /** Compiles configured keywords into a deterministic matcher (whole-word, case-insensitive). */
@@ -271,6 +335,17 @@ export function selectJevRoute(judgment: JevRouteJudgment, minimumConfidence: nu
   return { routeId: judgment.routeId, source: "auto", reason: "Jev selected a route above the configured confidence.", judgment };
 }
 
+export type RoutePerformance = {
+  samples: number;
+  averageDurationMs: number | undefined;
+  averageTurns: number | undefined;
+  retries: number;
+  compactions: number;
+  userOverrides: number;
+  feedbackCorrect: number;
+  feedbackWrong: number;
+};
+
 export type RouteReport = {
   sessions: number;
   decisions: number;
@@ -284,10 +359,31 @@ export type RouteReport = {
   averageElapsedMs: number | undefined;
   rolloutGatedCount: number;
   rolloutGatedSuggested: Record<string, number>;
+  telemetrySamples: number;
+  averageDurationMs: number | undefined;
+  averageTurns: number | undefined;
+  retries: number;
+  compactions: number;
+  userOverrides: number;
+  feedback: Record<string, number>;
+  performanceByRoute: Record<string, RoutePerformance>;
 };
 
-/** Pure aggregation over recorded RouteDecision entries; used by the /route report command. */
-export function aggregateRouteDecisions(decisions: RouteDecision[]): RouteReport {
+function emptyRoutePerformance(): RoutePerformance {
+  return {
+    samples: 0,
+    averageDurationMs: undefined,
+    averageTurns: undefined,
+    retries: 0,
+    compactions: 0,
+    userOverrides: 0,
+    feedbackCorrect: 0,
+    feedbackWrong: 0,
+  };
+}
+
+/** Pure aggregation over decisions and body-free route measurements. */
+export function aggregateRouteDecisions(decisions: RouteDecision[], telemetry: RouteTelemetry[] = [], feedback: RouteFeedback[] = []): RouteReport {
   const byRoute: Record<string, number> = {};
   const bySource: Record<string, number> = {};
   let fallbackCount = 0;
@@ -299,6 +395,31 @@ export function aggregateRouteDecisions(decisions: RouteDecision[]): RouteReport
   let rolloutGatedCount = 0;
   const rolloutGatedSuggested: Record<string, number> = {};
   const sessionIds = new Set<string>();
+  const performanceByRoute: Record<string, RoutePerformance> = {};
+  for (const measurement of telemetry) {
+    const performance = performanceByRoute[measurement.routeId] ?? (performanceByRoute[measurement.routeId] = emptyRoutePerformance());
+    performance.samples += 1;
+    performance.averageDurationMs = (performance.averageDurationMs ?? 0) + measurement.durationMs;
+    performance.averageTurns = (performance.averageTurns ?? 0) + measurement.turns;
+    performance.retries += measurement.retries;
+    performance.compactions += measurement.compactions;
+    if (measurement.userOverride) performance.userOverrides += 1;
+    sessionIds.add(measurement.sessionId);
+  }
+  const feedbackCounts: Record<string, number> = {};
+  for (const label of feedback) {
+    feedbackCounts[label.label] = (feedbackCounts[label.label] ?? 0) + 1;
+    const performance = performanceByRoute[label.routeId] ?? (performanceByRoute[label.routeId] = emptyRoutePerformance());
+    if (label.label === "correct") performance.feedbackCorrect += 1;
+    else performance.feedbackWrong += 1;
+    sessionIds.add(label.sessionId);
+  }
+  for (const performance of Object.values(performanceByRoute)) {
+    if (performance.samples > 0) {
+      performance.averageDurationMs = Math.round((performance.averageDurationMs ?? 0) / performance.samples);
+      performance.averageTurns = (performance.averageTurns ?? 0) / performance.samples;
+    }
+  }
   for (const decision of decisions) {
     byRoute[decision.routeId] = (byRoute[decision.routeId] ?? 0) + 1;
     bySource[decision.source] = (bySource[decision.source] ?? 0) + 1;
@@ -329,12 +450,22 @@ export function aggregateRouteDecisions(decisions: RouteDecision[]): RouteReport
     averageElapsedMs: jevCalls > 0 ? Math.round(elapsedSum / jevCalls) : undefined,
     rolloutGatedCount,
     rolloutGatedSuggested,
+    telemetrySamples: telemetry.length,
+    averageDurationMs: telemetry.length > 0 ? Math.round(telemetry.reduce((sum, item) => sum + item.durationMs, 0) / telemetry.length) : undefined,
+    averageTurns: telemetry.length > 0 ? telemetry.reduce((sum, item) => sum + item.turns, 0) / telemetry.length : undefined,
+    retries: telemetry.reduce((sum, item) => sum + item.retries, 0),
+    compactions: telemetry.reduce((sum, item) => sum + item.compactions, 0),
+    userOverrides: telemetry.filter((item) => item.userOverride).length,
+    feedback: feedbackCounts,
+    performanceByRoute,
   };
 }
 
 /** Scans a Pi session directory for recorded routing decisions, bounded to keep the command cheap. */
 export function buildRouteReport(sessionDir: string): RouteReport {
   const decisions: RouteDecision[] = [];
+  const telemetry: RouteTelemetry[] = [];
+  const feedback: RouteFeedback[] = [];
   let files = 0;
   try {
     for (const name of readdirSync(sessionDir)) {
@@ -344,10 +475,12 @@ export function buildRouteReport(sessionDir: string): RouteReport {
       const filePath = join(sessionDir, name);
       if (statSync(filePath).size > 25 * 1024 * 1024) continue;
       for (const line of readFileSync(filePath, "utf8").split("\n")) {
-        if (!line.includes(ROUTER_DECISION_ENTRY)) continue;
+        if (!line.includes(ROUTER_DECISION_ENTRY) && !line.includes(ROUTER_TELEMETRY_ENTRY) && !line.includes(ROUTER_FEEDBACK_ENTRY)) continue;
         try {
           const entry = JSON.parse(line);
           if (isRouteDecision(entry?.data)) decisions.push(entry.data);
+          if (isRouteTelemetry(entry?.data)) telemetry.push(entry.data);
+          if (isRouteFeedback(entry?.data)) feedback.push(entry.data);
         } catch {
           // Skip malformed lines; the report is best-effort.
         }
@@ -356,7 +489,7 @@ export function buildRouteReport(sessionDir: string): RouteReport {
   } catch {
     // Missing or unreadable session directory yields an empty report.
   }
-  return aggregateRouteDecisions(decisions);
+  return aggregateRouteDecisions(decisions, telemetry, feedback);
 }
 
 function formatCounts(counts: Record<string, number>): string {
@@ -1019,7 +1152,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   let classifier: TaskClassifier | undefined;
   let budgetManager: BudgetManager | undefined;
   let fallback: GenerationFallback<any> | undefined; // MVP: stays undefined; typed loosely so a future concrete model type can plug in (architecture §Failure behavior).
-  let state: RouterSessionState = { applyingRoute: false, manualSelection: false, optedOut: false, projectOverrides: false };
+  let state: RouterSessionState = { applyingRoute: false, manualSelection: false, optedOut: false, projectOverrides: false, observation: false };
 
   try {
     globalConfig = parseCodexRouterConfig(JSON.parse(readFileSync(ROUTER_CONFIG_PATH, "utf8")));
@@ -1050,11 +1183,55 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     };
     pi.appendEntry(ROUTER_DECISION_ENTRY, decision);
     state.lastDecision = decision;
+    if (state.activeTelemetry) {
+      state.activeTelemetry.routeId = decision.routeId;
+      state.activeTelemetry.source = decision.source;
+      state.activeTelemetry.model = decision.model;
+      state.activeTelemetry.thinkingLevel = decision.thinkingLevel;
+    }
     if (budgetManager && selection.judgment) {
       budgetManager.recordJev(selection.judgment.inputTokens, selection.judgment.outputTokens);
     }
     ctx.ui.setStatus("codex-jev-router", `Route: ${decision.routeId} (${decision.source})`);
     return decision;
+  }
+
+  function beginTelemetry(prompt: string): void {
+    const synopsis = createBoundedTaskSynopsis(prompt);
+    state.activeTelemetry = {
+      startedAt: Date.now(),
+      task: { byteLength: synopsis.byteLength, sha256: synopsis.sha256 },
+      turns: 0,
+      retries: 0,
+      compactions: 0,
+      userOverride: false,
+    };
+  }
+
+  function recordTelemetry(ctx: ExtensionContext): RouteTelemetry | undefined {
+    const active = state.activeTelemetry;
+    if (!active || !active.routeId || !active.source) return undefined;
+    const completedAt = new Date().toISOString();
+    const measurement: RouteTelemetry = {
+      version: 1,
+      sessionId: ctx.sessionManager.getSessionId(),
+      startedAt: new Date(active.startedAt).toISOString(),
+      completedAt,
+      durationMs: Math.max(0, Date.now() - active.startedAt),
+      routeId: active.routeId,
+      source: active.source,
+      model: active.model,
+      thinkingLevel: active.thinkingLevel,
+      turns: active.turns,
+      retries: active.retries,
+      compactions: active.compactions,
+      userOverride: active.userOverride,
+      task: active.task,
+    };
+    pi.appendEntry(ROUTER_TELEMETRY_ENTRY, measurement);
+    state.lastTelemetry = measurement;
+    state.activeTelemetry = undefined;
+    return measurement;
   }
 
   async function applyRoute(routeId: CodexRouteId, source: RouteSource, reason: string, ctx: ExtensionContext, prompt = "", judgment?: JevRouteJudgment, rollout?: RouterSelection["rollout"]): Promise<boolean> {
@@ -1068,9 +1245,10 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
       pi.setThinkingLevel(route.thinkingLevel);
       if (pi.getThinkingLevel() !== route.thinkingLevel) return false;
       const pin: PersistedPin = { version: 1, sessionId: ctx.sessionManager.getSessionId(), routeId, source: source === "manual" ? "manual" : source === "hard-gate" ? "hard-gate" : source === "pin" ? "pin" : "auto", provider: route.provider, model: route.model, thinkingLevel: route.thinkingLevel };
-      state.pin = pin;
+      const retainPin = !state.observation || source === "pin" || source === "manual";
+      state.pin = retainPin ? pin : undefined;
       state.manualSelection = source === "manual";
-      pi.appendEntry(ROUTER_PIN_ENTRY, pin);
+      if (retainPin) pi.appendEntry(ROUTER_PIN_ENTRY, pin);
       recordDecision(ctx, { routeId, source, reason, judgment, rollout }, prompt);
       return true;
     } finally {
@@ -1079,7 +1257,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   }
 
   pi.on("session_start", async (_event, ctx) => {
-    state = { applyingRoute: false, manualSelection: false, optedOut: false, projectOverrides: false };
+    state = { applyingRoute: false, manualSelection: false, optedOut: false, projectOverrides: false, observation: false };
     config = globalConfig;
     if (!config) {
       ctx.ui.setStatus("codex-jev-router", "Route: unavailable (invalid configuration)");
@@ -1095,6 +1273,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     state.optedOut = resolved.optedOut;
     state.projectOverrides = resolved.projectOverrides;
     const sessionId = ctx.sessionManager.getSessionId();
+    state.observation = shouldSampleObservation(sessionId, config.observation.sampleRate);
     for (const entry of ctx.sessionManager.getBranch()) {
       if (entry.type !== "custom" || entry.customType !== ROUTER_PIN_ENTRY || !isPersistedPin(entry.data) || entry.data.sessionId !== sessionId) continue;
       const pin = entry.data;
@@ -1113,19 +1292,22 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
           thinkingSupported = false;
         }
       }
-      if (candidate && thinkingSupported) {
+      const keepExplicitPin = pin.source === "pin" || pin.source === "manual";
+      if (candidate && thinkingSupported && (!state.observation || keepExplicitPin)) {
         state.pin = pin;
         state.manualSelection = pin.source === "manual";
       }
     }
     for (const entry of ctx.sessionManager.getBranch()) {
       if (entry.type === "custom" && entry.customType === ROUTER_DECISION_ENTRY && isRouteDecision(entry.data) && entry.data.sessionId === sessionId) state.lastDecision = entry.data;
+      if (entry.type === "custom" && entry.customType === ROUTER_TELEMETRY_ENTRY && isRouteTelemetry(entry.data) && entry.data.sessionId === sessionId) state.lastTelemetry = entry.data;
     }
-    ctx.ui.setStatus("codex-jev-router", state.pin ? `Route: ${state.pin.routeId} (${state.pin.source})` : "Route: auto");
+    ctx.ui.setStatus("codex-jev-router", state.observation ? "Route: observation" : state.pin ? `Route: ${state.pin.routeId} (${state.pin.source})` : "Route: auto");
   });
 
   pi.on("model_select", (event, ctx) => {
     if (state.applyingRoute) return;
+    if (state.activeTelemetry) state.activeTelemetry.userOverride = true;
     state.manualSelection = true;
     const pin: PersistedPin = { version: 1, sessionId: ctx.sessionManager.getSessionId(), routeId: "normal", source: "manual", provider: event.model.provider, model: event.model.id, thinkingLevel: pi.getThinkingLevel() as ThinkingLevel };
     state.pin = pin;
@@ -1134,12 +1316,33 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
   });
 
   pi.on("thinking_level_select", (_event, ctx) => {
+    if (state.activeTelemetry && !state.applyingRoute) state.activeTelemetry.userOverride = true;
     if (!state.applyingRoute && state.pin) {
       state.manualSelection = true;
       state.pin = { ...state.pin, source: "manual", thinkingLevel: pi.getThinkingLevel() as ThinkingLevel };
       pi.appendEntry(ROUTER_PIN_ENTRY, state.pin);
       ctx.ui.setStatus("codex-jev-router", "Route: manual thinking selection");
     }
+  });
+
+  pi.on("turn_start", () => {
+    if (state.activeTelemetry) state.activeTelemetry.turns += 1;
+  });
+
+  pi.on("session_compact", (event) => {
+    if (!state.activeTelemetry) return;
+    state.activeTelemetry.compactions += 1;
+    if (event.willRetry) state.activeTelemetry.retries += 1;
+  });
+
+  pi.on("session_compact_failed", (event) => {
+    if (!state.activeTelemetry) return;
+    state.activeTelemetry.compactions += 1;
+    if (event.willRetry) state.activeTelemetry.retries += 1;
+  });
+
+  pi.on("agent_settled", (_event, ctx) => {
+    recordTelemetry(ctx);
   });
 
   // Local non-authoritative quota tracking: every assistant turn's provider-reported usage.
@@ -1156,11 +1359,13 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
     const requested = state.pendingRoute;
     state.pendingRoute = undefined;
     if (requested) {
+      beginTelemetry(event.prompt);
       await applyRoute(requested, "one-shot", "The user selected this route for one task.", ctx, event.prompt);
       return;
     }
     if (state.pin) return;
     if (state.optedOut || !config.enabled) return;
+    beginTelemetry(event.prompt);
     const hardGate = routeHardGate(event.prompt, config.hardGate.patterns);
     if (hardGate) {
       await applyRoute(hardGate, "hard-gate", "A deterministic safety gate required a higher-capability route.", ctx, event.prompt);
@@ -1188,7 +1393,8 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
         const pin = state.pin ? `${state.pin.source} ${state.pin.provider}/${state.pin.model}:${state.pin.thinkingLevel}` : "none";
         const optOut = state.optedOut ? " · project opt-out" : config ? !config.enabled ? " · routing disabled (config)" : "" : "";
         const project = state.projectOverrides ? " · project overrides" : "";
-        ctx.ui.notify(`Codex router: ${configError ? `disabled (${configError})` : "ready"}; current ${current}; pin ${pin}; ${budgetManager ? budgetManager.line() : "quota unknown"}${optOut}${project}.`, configError ? "warning" : "info");
+        const observation = state.observation ? " · observation session" : "";
+        ctx.ui.notify(`Codex router: ${configError ? `disabled (${configError})` : "ready"}; current ${current}; pin ${pin}; ${budgetManager ? budgetManager.line() : "quota unknown"}${optOut}${project}${observation}.`, configError ? "warning" : "info");
         return;
       }
       if (command === "auto" || command === "reset") {
@@ -1227,7 +1433,36 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
         const gatedLine = report.rolloutGatedCount > 0
           ? ` · gated ${report.rolloutGatedCount} (suggested ${formatCounts(report.rolloutGatedSuggested)})`
           : "";
-        ctx.ui.notify(`Router report: ${report.sessions} sessions · ${report.decisions} decisions · routes ${formatCounts(report.byRoute)} · sources ${formatCounts(report.bySource)} · fallback ${fallbackRate}% · ${jevLine}${gatedLine}`, "info");
+        const measurementLine = report.telemetrySamples > 0
+          ? ` · measurements ${report.telemetrySamples} · avg ${report.averageDurationMs}ms / ${report.averageTurns?.toFixed(1)} turns · retries ${report.retries} · compactions ${report.compactions} · overrides ${report.userOverrides}`
+          : " · measurements none";
+        const feedbackLine = Object.keys(report.feedback).length > 0 ? ` · feedback ${formatCounts(report.feedback)}` : "";
+        const performanceLine = Object.entries(report.performanceByRoute).map(([route, performance]) => `${route} ${performance.samples} samples/${performance.averageDurationMs ?? "?"}ms/${performance.averageTurns?.toFixed(1) ?? "?"} turns`).join(" · ");
+        ctx.ui.notify(`Router report: ${report.sessions} sessions · ${report.decisions} decisions · routes ${formatCounts(report.byRoute)} · sources ${formatCounts(report.bySource)} · fallback ${fallbackRate}% · ${jevLine}${gatedLine}${measurementLine}${feedbackLine}${performanceLine ? ` · performance ${performanceLine}` : ""}`, "info");
+        return;
+      }
+      if (command === "feedback") {
+        if (routeText !== "correct" && routeText !== "wrong") {
+          ctx.ui.notify("Use /route feedback correct|wrong", "error");
+          return;
+        }
+        const decision = state.lastDecision;
+        if (!decision || decision.sessionId !== ctx.sessionManager.getSessionId()) {
+          ctx.ui.notify("No routing decision is recorded for this session.", "error");
+          return;
+        }
+        const feedback: RouteFeedback = {
+          version: 1,
+          sessionId: decision.sessionId,
+          at: new Date().toISOString(),
+          label: routeText,
+          routeId: decision.routeId,
+          source: decision.source,
+          decisionAt: decision.at,
+          telemetryAt: state.lastTelemetry?.completedAt,
+        };
+        pi.appendEntry(ROUTER_FEEDBACK_ENTRY, feedback);
+        ctx.ui.notify(`Recorded route feedback: ${routeText} (${decision.routeId}).`, "info");
         return;
       }
       if (command === "explain") {
@@ -1235,7 +1470,7 @@ export default function codexJevRouter(pi: ExtensionAPI): void {
         ctx.ui.notify(decision ? `Latest route: ${decision.routeId} (${decision.source}): ${decision.reason}` : "No routing decision is recorded for this session.", "info");
         return;
       }
-      ctx.ui.notify("Use /route status | auto | pin <light|normal|hard|very-hard> | once <route> | reset | explain | report", "error");
+      ctx.ui.notify("Use /route status | auto | pin <light|normal|hard|very-hard> | once <route> | reset | explain | report | feedback <correct|wrong>", "error");
     },
   });
 }
@@ -1281,4 +1516,23 @@ function isRouteDecision(value: unknown): value is RouteDecision {
     && typeof value.source === "string" && typeof value.reason === "string"
     && (value.rolloutGate === undefined || typeof value.rolloutGate === "boolean")
     && (value.suggestedRouteId === undefined || isRouteId(value.suggestedRouteId));
+}
+function isRouteSource(value: unknown): value is RouteSource {
+  return value === "auto" || value === "one-shot" || value === "pin" || value === "hard-gate" || value === "fallback" || value === "manual";
+}
+function isRouteTelemetry(value: unknown): value is RouteTelemetry {
+  return isRecord(value) && value.version === 1 && typeof value.sessionId === "string"
+    && typeof value.startedAt === "string" && typeof value.completedAt === "string" && typeof value.durationMs === "number" && value.durationMs >= 0
+    && isRouteId(value.routeId) && isRouteSource(value.source)
+    && (value.model === undefined || typeof value.model === "string")
+    && (value.thinkingLevel === undefined || isThinkingLevel(value.thinkingLevel))
+    && isNonNegativeInteger(value.turns) && isNonNegativeInteger(value.retries) && isNonNegativeInteger(value.compactions)
+    && typeof value.userOverride === "boolean" && isRecord(value.task)
+    && isNonNegativeInteger(value.task.byteLength) && typeof value.task.sha256 === "string";
+}
+function isRouteFeedback(value: unknown): value is RouteFeedback {
+  return isRecord(value) && value.version === 1 && typeof value.sessionId === "string" && typeof value.at === "string"
+    && (value.label === "correct" || value.label === "wrong") && isRouteId(value.routeId) && isRouteSource(value.source)
+    && (value.decisionAt === undefined || typeof value.decisionAt === "string")
+    && (value.telemetryAt === undefined || typeof value.telemetryAt === "string");
 }

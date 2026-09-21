@@ -52,5 +52,8 @@
     "model": "jev-1.13.0",
     "timeoutMs": 5000,
     "minimumConfidence": 0.7
+  },
+  "observation": {
+    "sampleRate": 0.1
   }
 }

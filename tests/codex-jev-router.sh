@@ -82,6 +82,19 @@ assert.equal(jevDecision.jev.confidence, 0.9);
 assert.equal(jevDecision.jev.inputTokens, 273);
 assert.equal(jevDecision.jev.outputTokens, 20);
 assert.equal(typeof jevDecision.jev.elapsedMs, "number");
+await handlers.get("turn_start")({ turnIndex: 1, timestamp: Date.now() }, ctx);
+await handlers.get("session_compact")({ reason: "overflow", willRetry: true }, ctx);
+await handlers.get("agent_settled")({}, ctx);
+const telemetry = entries.findLast((entry) => entry.customType === "codex-jev-router-telemetry").data;
+assert.equal(telemetry.routeId, "light");
+assert.equal(telemetry.turns, 1);
+assert.equal(telemetry.retries, 1);
+assert.equal(telemetry.compactions, 1);
+assert.equal(telemetry.userOverride, false);
+await command.handler("feedback correct", ctx);
+const feedback = entries.findLast((entry) => entry.customType === "codex-jev-router-feedback").data;
+assert.equal(feedback.label, "correct");
+assert.equal(feedback.routeId, "light");
 
 // TaskClassifier 境界: createJevClassifier は key なしで失敗し、スタブ fetch で judgment を返す。
 const classifier = extension.createJevClassifier("jev-1.13.0", 5000);
@@ -280,6 +293,26 @@ assert.equal(aggregated.jevOutputTokens, 32);
 assert.ok(Math.abs(aggregated.averageConfidence - 0.85) < 1e-9, `averageConfidence ${aggregated.averageConfidence}`);
 assert.equal(aggregated.averageElapsedMs, 448);
 assert.equal(extension.aggregateRouteDecisions([]).decisions, 0);
+const measured = extension.aggregateRouteDecisions([], [
+  { version: 1, sessionId: "s1", startedAt: "t", completedAt: "t2", durationMs: 1200, routeId: "light", source: "auto", turns: 2, retries: 1, compactions: 1, userOverride: false, task: { byteLength: 10, sha256: "a" } },
+  { version: 1, sessionId: "s2", startedAt: "t", completedAt: "t3", durationMs: 2400, routeId: "hard", source: "auto", turns: 4, retries: 0, compactions: 0, userOverride: true, task: { byteLength: 12, sha256: "b" } },
+], [
+  { version: 1, sessionId: "s1", at: "t4", label: "correct", routeId: "light", source: "auto" },
+  { version: 1, sessionId: "s2", at: "t5", label: "wrong", routeId: "hard", source: "auto" },
+]);
+assert.equal(measured.telemetrySamples, 2);
+assert.equal(measured.averageDurationMs, 1800);
+assert.equal(measured.averageTurns, 3);
+assert.equal(measured.retries, 1);
+assert.equal(measured.compactions, 1);
+assert.equal(measured.userOverrides, 1);
+assert.deepEqual(measured.feedback, { correct: 1, wrong: 1 });
+assert.equal(measured.performanceByRoute.light.averageDurationMs, 1200);
+assert.equal(measured.performanceByRoute.hard.averageTurns, 4);
+assert.equal(measured.performanceByRoute.light.feedbackCorrect, 1);
+assert.equal(measured.performanceByRoute.hard.feedbackWrong, 1);
+assert.equal(extension.shouldSampleObservation("router-test-session", 0), false);
+assert.equal(extension.shouldSampleObservation("router-test-session", 1), true);
 
 // /route report: fixture session ディレクトリを走査して集計を notify する（破損行は無視）。
 sessionDir = mkdtempSync(join(tmpdir(), "router-report-"));
@@ -287,6 +320,8 @@ try {
   writeFileSync(join(sessionDir, "2026-09-19T00-00-01Z_s1.jsonl"), [
     JSON.stringify({ type: "custom", customType: "codex-jev-router-decision", data: { version: 1, sessionId: "s1", at: "t", routeId: "light", source: "auto", reason: "r", jev: { confidence: 0.9, inputTokens: 273, outputTokens: 20, elapsedMs: 595 } } }),
     JSON.stringify({ type: "custom", customType: "codex-jev-router-decision", data: { version: 1, sessionId: "s1", at: "t", routeId: "normal", source: "fallback", reason: "r" } }),
+    JSON.stringify({ type: "custom", customType: "codex-jev-router-telemetry", data: { version: 1, sessionId: "s1", startedAt: "t", completedAt: "t2", durationMs: 1200, routeId: "light", source: "auto", turns: 2, retries: 1, compactions: 1, userOverride: false, task: { byteLength: 10, sha256: "a" } } }),
+    JSON.stringify({ type: "custom", customType: "codex-jev-router-feedback", data: { version: 1, sessionId: "s1", at: "t3", label: "correct", routeId: "light", source: "auto" } }),
     "{not-json",
   ].join("\n") + "\n");
   writeFileSync(join(sessionDir, "2026-09-19T00-00-02Z_s2.jsonl"), JSON.stringify({ type: "custom", customType: "codex-jev-router-decision", data: { version: 1, sessionId: "s2", at: "t", routeId: "light", source: "hard-gate", reason: "r", jev: { confidence: 0.8, inputTokens: 150, outputTokens: 12, elapsedMs: 300 } } }) + "\n");
@@ -300,6 +335,9 @@ try {
   assert.ok(message.includes("sources auto 1 · fallback 1 · hard-gate 1"));
   assert.ok(message.includes("fallback 33.3%"));
   assert.ok(message.includes("Jev 2 calls · 423 in / 32 out · avg conf 0.85 · avg 448ms"));
+  assert.ok(message.includes("measurements 1"));
+  assert.ok(message.includes("feedback correct 1"));
+  assert.ok(message.includes("performance light 1 samples/1200ms/2.0 turns"));
 } finally {
   rmSync(sessionDir, { recursive: true, force: true });
 }
@@ -307,6 +345,8 @@ try {
 // 設定データ化した hard gate: config 検証・routeHardGate 直接・gate の E2E。
 const realConfig = extension.parseCodexRouterConfig(JSON.parse(readFileSync(`${process.env.REPO}/home/.pi/agent/codex-jev-router.json`, "utf8")));
 assert.equal(realConfig.hardGate.patterns.length, 12);
+assert.equal(realConfig.observation.sampleRate, 0.1);
+assert.throws(() => extension.parseCodexRouterConfig({ ...realConfig, observation: { sampleRate: 1.1 } }), /fallbackRoute/);
 assert.throws(() => extension.parseCodexRouterConfig({ ...realConfig, hardGate: { patterns: "security" } }), /hardGate/);
 assert.throws(() => extension.parseCodexRouterConfig({ ...realConfig, hardGate: { patterns: [""] } }), /hardGate/);
 assert.equal(extension.routeHardGate("Audit the SECURITY handling", realConfig.hardGate.patterns), "hard");

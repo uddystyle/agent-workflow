@@ -57,6 +57,14 @@ Implemented extension commands（2026-09-19、prototype）:
 
 The built-in `/model` and `/thinking` remain authoritative manual controls. On a manual model/thinking change, the extension writes a pin entry with source `manual` and does not silently reverse it（実装済み）. This is more predictable than attempting to infer an override from free text.
 
+## Measurement and feedback
+
+実装済みの `codex-jev-router-telemetry` は、prompt本文を保存せず、routeごとに session ID、taskのbyte数/hash、経過時間、turn数、compactionと既知のretry数、user overrideだけを記録する。`/route report` は route別の平均時間・平均turn数・retry・compaction・override と、`/route feedback correct|wrong` の手動ラベルを集計する。
+
+`observation.sampleRate` は session ID の決定的hashで unpinned observation session を抽出する。現在は **0.1（10%）**。observation sessionではauto / hard-gate / fallbackの適用後にpinを残さず、次のtaskを再分類できる。明示的な `/route pin` とmanual model選択は尊重する。本文・tool出力・秘密はtelemetryへ保存しない。
+
+Piが公開するretry eventはなく、`retries` は compaction が `willRetry` を示した既知の自動再試行だけを数える。これはproviderの全retry回数や品質の証明ではない。feedbackは人の観測ラベルであり、自動gateには使わない。
+
 ## Guarded rollout
 
 `rollout.enabledRoutes` で段階展開を行う（実装 2026-09-19。方法は implementation-plan Milestone 4）:
