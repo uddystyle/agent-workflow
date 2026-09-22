@@ -161,6 +161,9 @@ workflow/coordinator create-run \
 workflow/coordinator validate --run-dir <run-dir> --attempt 0
 workflow/coordinator run-agent --run-dir <run-dir> --role reviewer --attempt 0
 ```
+
+Pi を再起動するか `/reload` した後は、global extension の `/workflow start` で現在の Git worktree を確認付きで run にできる。`/workflow status` は同じ Pi session で作った最新 run の state を表示する。milestone はsecret scanを通り、Coordinatorがcommit・merge・push・deployを行うことはない。
+
 `two-axis-review` は旧名の入口だけを残し、手順は `code-review` に一本化する。
 
 ## 出自
