@@ -115,7 +115,7 @@ Herdr の pane で対象の repo を開き、`pi` を起動する。
 ```
 /skill:agents-md       この repo の AGENTS.md を作り直す
 /skill:code-review     起点を指定して規約・仕様を独立したparallel sub-agentsで見る
-/skill:research        調査をHerdrのbackground paneへ渡す
+/skill:research        調査をHerdrのbackground tabへ渡す
 /skill:worktrees       canonical root に worktree を作成・再利用する
 /skill:tdd             合意したseamでred-greenを始める
 /skill:plannotator-tui 文書を人のレビューへ渡す
@@ -126,9 +126,9 @@ Herdr の pane で対象の repo を開き、`pi` を起動する。
 `write-discoverable-code`がplain-text searchで辿れる名前・型・literal・配置を補う。
 TypeScript／Effectの変更では`coding-standards`が型・境界・回復・lintの規律を補う。
 
-レビューは参考先と同じく手動で呼び、StandardsとSpecを独立したparallel sub-agentsへ渡す。配置はagentを起動する道具の規則に委ねる。
+レビューは手動で呼び、StandardsとSpecを独立したparallel sub-agentsへ渡す。sub-agentは同一workspaceの新規tabで起動し、pane splitは人が明示した場合だけにする。
 規約がskill本文のsmell baselineより優先し、仕様なしは未評価として報告する。親の会話上の依頼と差分snapshotを子へ渡す。
-researchもbackground sibling paneへ渡し、環境変数で再帰委譲を止める。新しいtabは自動作成しない。
+researchもbackground tabへ渡し、環境変数で再帰委譲を止める。短命tabは成果物を確認してから作成者が閉じ、blocked・timeout・failedは残す。
 grillingは環境の事実をfact sub-agentへ渡し、依存するfrontierだけを待たせる。
 worktreesはモデルからも呼べる。既存cloneの変換や未保存変更の破棄は確認を通す。
 model-invoked／manual-onlyとrouterの規律は`skills/writing-for-agents/SKILL-MECHANICS.md`に置く。

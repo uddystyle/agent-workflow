@@ -711,3 +711,19 @@ codeの追加・変更・renameには`write-discoverable-code`を使い、plain-
 参考先は`dmmulroy/.dotfiles` commit `fcdf060`。正本はそれぞれ`mattpocock/skills` commit `3216582`と
 `modem-dev/skills` commit `edcdedb`で、両方のMIT LICENSEとsource commit、upstream SHA-256をskillの隣へ置く。
 常時contextは短いdescriptionだけにし、本文は発火後に読む。
+
+## D-31 短命のsub-agentはtabで隔離し、成功時だけ回収する
+
+sub-agentは同一Herdr workspaceの新規tabで起動する。pane splitは人が明示した場合だけにする。親はcreate応答から得たtab IDを
+その呼出しの間だけ持ち、成果物または最終出力を確認できた成功時に限り、そのtabを閉じる。
+
+**理由**: split paneを既定にすると主作業の表示領域を継続して削る。一方で作成tabを常に残すと、短命taskのUIが蓄積する。
+呼出し内だけのownershipなら、永続state、後日回収、他人のtabを誤って閉じない照合を追加せずに両方を避けられる。
+
+**選ばなかった案**:
+
+- **終了時に常に閉じる** —— blocked、timeout、失敗の診断出力を隠す。
+- **tab所有権を永続化して後日回収する** —— orphan回収のためにstate、復旧、ownership照合を足し、Coordinatorの責務へ戻る。
+
+parentが中断した場合もcleanupを試みない。blocked、timeout、stalled、失敗、または結果未確認のtabは残し、IDと観測状態を人へ報告する。
+server、watcher、人が残すよう依頼したtaskはpersistentであり、自動回収しない。

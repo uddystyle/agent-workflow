@@ -94,32 +94,31 @@ IDs and live agent names are scoped to one server. Two saved SSH machines can bo
 
 ## Start and coordinate an agent
 
-Default to a sibling pane in the current tab and the current working directory. Do not create a workspace, tab, worktree, or different cwd unless the user explicitly requests that topology or location.
+Default to a new tab in the current workspace and the current working directory. Keep the user's focus in the calling tab:
 
-Honor a direction requested by the user. Otherwise inspect the caller pane:
+```bash
+herdr tab create --workspace "$HERDR_WORKSPACE_ID" --label "<task-name>" --cwd "$PWD" --no-focus
+```
+
+Read the created tab ID from `.result.tab` and its available shell pane ID from `.result.root_pane`; use those returned IDs, not a predicted tab position. A short-lived task owns only the tab it created during this invocation.
+
+Create a pane split only when the user explicitly requests a split. Honor the requested direction, inspect the caller layout first, and preserve cwd and focus:
 
 ```bash
 herdr pane layout --pane "$HERDR_PANE_ID"
+herdr pane split --current --direction <requested-direction> --cwd "$PWD" --no-focus
 ```
 
-Split a wide pane to the right and a narrow or tall pane down. Avoid repeated same-direction splits that create unusably narrow columns or short rows. Keep the user's focus in the calling pane and explicitly preserve the caller's working directory:
+An available shell pane must be at its interactive prompt, with the shell itself in the foreground and no foreground command, editor, or agent running. Start a supported agent in the returned root pane with a useful unique name:
 
 ```bash
-herdr pane split --current --direction right --cwd "$PWD" --no-focus
-```
-
-Replace `right` with `down` when appropriate. Read the new pane ID from `.result.pane.pane_id`.
-
-An available shell pane must be at its interactive prompt, with the shell itself in the foreground and no foreground command, editor, or agent running. Start a supported agent in that pane with a useful unique name:
-
-```bash
-herdr agent start reviewer --kind codex --pane <returned-pane-id>
+herdr agent start reviewer --kind codex --pane <returned-root-pane-id>
 ```
 
 Use the kind requested by the user. Run `herdr agent` to inspect the installed kind list and options. Pass native agent arguments only after `--`:
 
 ```bash
-herdr agent start reviewer --kind codex --pane <returned-pane-id> -- <agent-args...>
+herdr agent start reviewer --kind codex --pane <returned-root-pane-id> -- <agent-args...>
 ```
 
 A successful `agent start` returns only after Herdr detects the expected agent in the same pane and considers it ready for interactive input. If the agent is blocked during startup, the command returns `agent_not_ready` immediately but keeps the name available for `agent read` and `agent send-keys`. Wait until the agent becomes idle before prompting it. Startup defaults to a 30-second timeout.
@@ -158,21 +157,26 @@ herdr agent read reviewer --source recent-unwrapped --lines 120
 
 If a wait fails or returns `blocked`, inspect `agent get` and `agent read` before deciding what input to send. A timeout or stalled response does not prove the prompt was never delivered; do not blindly submit it again. Use the pane surface only when raw terminal control is intentional.
 
-## Run an ordinary command in another pane
-
-Create a sibling pane with the same geometry rule, preserve the caller's working directory, and keep user focus unchanged:
+After a short-lived task reaches its own verified completion condition, read its final response or output before closing the tab that this invocation created:
 
 ```bash
-herdr pane split --current --direction right --cwd "$PWD" --no-focus
+herdr tab close <created-tab-id>
 ```
 
-Read the new pane ID from `.result.pane.pane_id`, then run and inspect the command:
+`blocked`, timeout, stalled, failed, or unverified work is not a cleanup condition: leave that tab open and report its ID and observed state. Do not add an exit trap for tab cleanup; an interrupted parent must leave diagnostic output visible. Long-running servers, watchers, and tabs the user asked to keep are persistent and are never closed automatically.
+
+## Run an ordinary command in another tab
+
+When an ordinary command needs its own terminal, create a short-lived tab with the current workspace and cwd, then run and inspect it through its root pane:
 
 ```bash
-herdr pane run <returned-pane-id> "just test"
-herdr pane wait-output <returned-pane-id> --match "test result" --timeout 120000
-herdr pane read <returned-pane-id> --source recent-unwrapped --lines 120
+herdr tab create --workspace "$HERDR_WORKSPACE_ID" --label "<task-name>" --cwd "$PWD" --no-focus
+herdr pane run <returned-root-pane-id> "just test"
+herdr pane wait-output <returned-root-pane-id> --match "test result" --timeout 120000
+herdr pane read <returned-root-pane-id> --source recent-unwrapped --lines 120
 ```
+
+After the caller has verified the command's required result, close the returned tab ID. Preserve the tab on timeout, failure, or an output that does not establish success.
 
 `pane run` atomically sends command text and Enter. `pane wait-output` searches the selected snapshot immediately, so output that already exists can match. Use `--match <text>` for a literal substring or `--regex <pattern>` for a Rust regular expression. Omitting `--timeout` allows an indefinite wait.
 

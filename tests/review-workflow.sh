@@ -21,8 +21,13 @@ assert 'pane' not in review.lower() and 'tab' not in review.lower()
 assert 'PI_PROVIDER' not in review and 'PI_MODEL' not in review and 'PI_REASONING_LEVEL' not in review
 research=text('skills/research/SKILL.md')
 assert 'RESEARCH_SUBAGENT=1' in research
-assert 'herdr pane split' in research
-assert '.result.pane.pane_id' in research
+assert 'herdr pane split' not in research
+assert 'herdr tab create' in research
+assert '--env RESEARCH_SUBAGENT=1' in research
+assert '.result.root_pane' in research
+assert 'herdr tab close' in research
+assert research.index('findings fileを直接読む') < research.index('herdr tab close')
+assert 'blocked' in research and 'timeout' in research and '失敗時はtabを残す' in research
 assert 'herdr pane process-info' in research
 assert 'shell_pid' in research and 'foreground_processes' in research and 'agent_pane_busy' in research
 assert 'foreground_is_shell' not in research
@@ -49,6 +54,9 @@ assert '型だけを置き換えた変更' in standards
 herdr=text('skills/herdr/SKILL.md')
 assert 'another skill explicitly asks for or requires them' in herdr
 assert 'Start and coordinate an agent' in herdr
+assert 'Default to a new tab in the current workspace' in herdr
+assert 'herdr tab create' in herdr and 'herdr tab close' in herdr
+assert 'only when the user explicitly requests a split' in herdr
 plannotator=text('skills/plannotator-tui/SKILL.md')
 assert 'name: plannotator-tui' in plannotator
 assert 'disable-model-invocation: true' in plannotator

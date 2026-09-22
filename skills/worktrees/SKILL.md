@@ -48,6 +48,8 @@ herdr tab create --workspace <ws> --label "<観点>" --cwd <worktree-path>
 herdr agent start <観点> --kind <種類> --pane <返ってきた pane>
 ```
 
+短命のread-only agentなら、作成者はHerdr skillのephemeral tab lifecycleに従い、結果確認後に作成tabを閉じる。writer、長時間task、人が残すよう依頼したagentは自動で閉じない。
+
 **完了条件**: `herdr agent get <観点>` の cwd が意図した worktree を指す。
 
 ## 4. 片付ける
