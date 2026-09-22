@@ -277,6 +277,24 @@ case_retired_review_link() {
 	passed=$((passed + 1))
 }
 
+case_retired_jev_router_links() {
+	local d="$tmp/retired-jev-router" name dest foreign="$tmp/foreign-jev-router"
+	mkdir -p "$d/agents" "$d/pi" "$d/home/.pi/agent/extensions"
+	for name in codex-jev-router.json extensions/codex-jev-router.ts; do
+		dest="$d/home/.pi/agent/$name"
+		ln -s "$repo/home/.pi/agent/$name" "$dest"
+	done
+	run_install "$d" bash >/dev/null
+	for name in codex-jev-router.json extensions/codex-jev-router.ts; do
+		[ ! -L "$d/home/.pi/agent/$name" ] || fail "旧Jev router $name の配信リンクが残った"
+	done
+	printf 'keep\n' >"$foreign"
+	ln -s "$foreign" "$d/home/.pi/agent/codex-jev-router.json"
+	run_install "$d" bash >/dev/null
+	expect_link "$d/home/.pi/agent/codex-jev-router.json" "$foreign"
+	passed=$((passed + 1))
+}
+
 case_clean_and_repeat
 case_retired_survey_link
 case_retired_review_agent_links
@@ -284,6 +302,7 @@ case_retired_pi_implement_link
 case_retired_pi_research_link
 case_retired_opencode_links
 case_retired_review_link
+case_retired_jev_router_links
 case_absolute_owned_link
 case_missing_pi_directory
 case_upstream_herdr_skill

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Development Workflow Coordinator V1 immutable run manifest",
+  "type": "object",
+  "required": ["schema_version", "run_id", "repository_root", "worktree_path", "branch", "base_sha", "milestone", "model", "validation_profile", "limits"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "repository_root": { "type": "string", "minLength": 1 },
+    "worktree_path": { "type": "string", "minLength": 1 },
+    "branch": { "type": "string", "minLength": 1 },
+    "base_sha": { "type": "string", "minLength": 1 },
+    "milestone": { "type": "object", "required": ["source_path", "sha256"] },
+    "model": { "type": "string", "minLength": 1 },
+    "validation_profile": { "const": "repository-tests" },
+    "limits": { "type": "object", "required": ["max_fix_attempts", "max_review_rounds"] }
+  }
+}

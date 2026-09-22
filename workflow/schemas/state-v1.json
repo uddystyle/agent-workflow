@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Development Workflow Coordinator V1 mutable lifecycle state",
+  "type": "object",
+  "required": ["schema_version", "phase", "attempt", "review_round", "writer", "updated_at"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "phase": { "enum": ["planned", "implementing", "validating", "reviewing", "re-reviewing", "fixing", "ready-for-human", "blocked", "cancelled", "attempt-limit-reached"] },
+    "attempt": { "type": "integer", "minimum": 0 },
+    "review_round": { "type": "integer", "minimum": 0 },
+    "writer": { "type": ["string", "null"] },
+    "updated_at": { "type": ["string", "null"] }
+  }
+}
