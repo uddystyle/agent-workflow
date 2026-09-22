@@ -1,81 +1,94 @@
 #!/usr/bin/env bash
-# skills/ を正本（~/.agents/skills/）へ、正本を各エージェントへ、home/ の設定を ~ へ張る。冪等。
-#
-# 実体のファイルやディレクトリが既にある場合は上書きせず止まる。
-# 消してよいかは人が判断する。
+# home/ を唯一の正本として Stow で $HOME へ張る。skill は home/.agents/skills/ に置く。
+# 実体・別管理 symlink は上書きしない。
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-agents="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 stow_target="${STOW_TARGET:-$HOME}"
-
-# スキルを読むエージェントの置き場。存在するものにだけ配る。
-consumers=(
-	"${PI_SKILLS_DIR:-$HOME/.pi/agent/skills}"
-)
-
+blocked=0
 linked=0
 skipped=0
-blocked=0
 
-# 1本張る。既に正しければ数えない。他人のものは奪わない。
-# $1 張り先  $2 指す先  $3 報告に使う名前
-link_one() {
-	dest=$1
-	want=$2
-	label=$3
-
-	if [ -L "$dest" ]; then
-		current=$(readlink "$dest")
-		if [ "$current" = "$want" ]; then
-			printf 'OK   %s は張り済み\n' "$label"
-			skipped=$((skipped + 1))
-			return 0
-		fi
-		case "$current" in
-		"$repo"/* | "$agents"/*)
-			printf 'MOVE %s は古い場所を指している。張り替える\n' "$label"
-			rm "$dest"
-			;;
-		*)
-			printf 'STOP %s は別管理の symlink である (-> %s)\n' "$dest" "$current" >&2
-			printf '     別の名前を使うか、その管理元で消してから入れ直す\n' >&2
-			blocked=$((blocked + 1))
-			return 0
-			;;
-		esac
-	elif [ -e "$dest" ]; then
-		printf 'STOP %s は実体である。中身を %s へ移してから消す\n' "$dest" "$want" >&2
-		blocked=$((blocked + 1))
-		return 0
-	fi
-
-	ln -s "$want" "$dest"
-	printf 'LINK %s\n' "$label"
-	linked=$((linked + 1))
+# 存在しない旧sourceも比較できる、symlinkの字面上の絶対pathを返す。
+link_path() {
+	local link=$1 target candidate
+	target=$(readlink "$link") || return 1
+	case "$target" in
+	/*) candidate=$target ;;
+	*) candidate="$(dirname "$link")/$target" ;;
+	esac
+	python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$candidate"
 }
 
-# 以前Piだけへ配ったskill file linkを退役させる。researchは共有skillへ移行し、implementは廃止した。
-# consumerの指定先と、home/をstowした既定位置の両方を見る。
-retired_skill_dirs=("${consumers[@]}" "$stow_target/.pi/agent/skills")
-for retired_skill in research implement; do
-	retired_source="$repo/home/.pi/agent/skills/$retired_skill/SKILL.md"
-	for dir in "${retired_skill_dirs[@]}"; do
-		retired_dest="$dir/$retired_skill/SKILL.md"
-		[ -L "$retired_dest" ] || continue
-		retired_target=$(readlink "$retired_dest")
-		retired_resolved=$(python3 -c 'import os,sys; print(os.path.abspath(os.path.join(os.path.dirname(sys.argv[1]),sys.argv[2])))' "$retired_dest" "$retired_target" 2>/dev/null || true)
-		if [ "$retired_resolved" = "$retired_source" ]; then
-			rm "$retired_dest"
-			rmdir "$(dirname "$retired_dest")" 2>/dev/null || true
-		fi
-	done
+link_points_to() {
+	local link=$1 want=$2 actual expected
+	[ -L "$link" ] || return 1
+	actual=$(link_path "$link") || return 1
+	expected=$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$want")
+	[ "$actual" = "$expected" ]
+}
+
+# 旧 root skills/ を指すglobal linkと、そのPi consumer linkだけを退役する。
+legacy_global_names=()
+while IFS= read -r src; do
+	name=$(basename "$src")
+	global="$stow_target/.agents/skills/$name"
+	if link_points_to "$global" "$repo/skills/$name"; then
+		legacy_global_names+=("$name")
+	fi
+done < <(find "$repo/home/.agents/skills" -mindepth 1 -maxdepth 1 -type d | sort)
+
+for name in "${legacy_global_names[@]:-}"; do
+	[ -n "$name" ] || continue
+	legacy_pi="$stow_target/.pi/agent/skills/$name"
+	if link_points_to "$legacy_pi" "$stow_target/.agents/skills/$name" || \
+		link_points_to "$legacy_pi" "$repo/skills/$name"; then
+		rm "$legacy_pi"
+		printf 'REMOVE 旧Pi skill link %s\n' "$name"
+	fi
 done
 
-# Herdr 同梱 skill の本文を保ったまま、発火条件だけを repo 管理版へ移す。
-# 完全に同梱版と一致する実体だけが対象で、利用者が変更したものは通常の衝突として止める。
-herdr_dest="$agents/herdr"
-herdr_src="$repo/skills/herdr/SKILL.md"
+for name in "${legacy_global_names[@]:-}"; do
+	[ -n "$name" ] || continue
+	global="$stow_target/.agents/skills/$name"
+	if link_points_to "$global" "$repo/skills/$name"; then
+		rm "$global"
+		printf 'REMOVE 旧global skill link %s\n' "$name"
+	fi
+done
+
+# Pi専用だったskillのStow file linkだけを退役する。実体・別管理linkには触れない。
+for name in domain-modeling grill-with-docs grilling prototype tdd; do
+	legacy_dir="$stow_target/.pi/agent/skills/$name"
+	removed=no
+	while IFS= read -r source; do
+		rel=${source#"$repo/home/.agents/skills/$name/"}
+		legacy="$legacy_dir/$rel"
+		old_source="$repo/home/.pi/agent/skills/$name/$rel"
+		if link_points_to "$legacy" "$old_source"; then
+			rm "$legacy"
+			removed=yes
+		fi
+	done < <(find "$repo/home/.agents/skills/$name" -type f)
+	if [ "$removed" = yes ]; then
+		find "$legacy_dir" -depth -type d -exec rmdir {} \; 2>/dev/null || true
+		printf 'REMOVE 旧Pi-only skill %s\n' "$name"
+	fi
+done
+
+# 新しいglobal skillと同名のPi skillが残れば、Piのdiscovery collisionを隠さず停止する。
+while IFS= read -r src; do
+	name=$(basename "$src")
+	legacy="$stow_target/.pi/agent/skills/$name"
+	if [ -e "$legacy" ] || [ -L "$legacy" ]; then
+		printf 'STOP %s はPi skillとして残っている。移動または削除してから入れ直す\n' "$legacy" >&2
+		blocked=$((blocked + 1))
+	fi
+done < <(find "$repo/home/.agents/skills" -mindepth 1 -maxdepth 1 -type d | sort)
+
+# Herdr同梱skillが実体としてある場合は、本文が同一のときだけStowへ明け渡す。
+herdr_dest="$stow_target/.agents/skills/herdr"
+herdr_src="$repo/home/.agents/skills/herdr/SKILL.md"
 if [ -d "$herdr_dest" ] && [ ! -L "$herdr_dest" ] && [ -f "$herdr_dest/SKILL.md" ]; then
 	if [ "$(find "$herdr_dest" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = 1 ] && \
 		python3 - "$herdr_dest/SKILL.md" "$herdr_src" <<'PY'
@@ -96,144 +109,71 @@ PY
 	fi
 fi
 
-# 1. repo のスキルを正本へ張る。
-#    ディレクトリごと張るので、repo にファイルを足せば張り直さずに届く。
-mkdir -p "$agents"
-for src in "$repo"/skills/*/; do
-	[ -d "$src" ] || continue
-	name=$(basename "$src")
-	# 変数名は必ず括る。直後に多バイト文字が来ると、bash が名前の一部として読む。
-	link_one "$agents/$name" "${src%/}" "${name}（正本）"
-
-	# 2. 正本を各エージェントへ配る。置き場が無いエージェントには配らない。
-	for dir in "${consumers[@]}"; do
-		# 配り先を作るのは、そのエージェントを入れる仕事になる。
-		# ここは既にある置き場へ配るだけで、未導入のエージェントは明示して飛ばす。
-		rel=${dir#"$HOME"/}
-		if [ ! -d "$dir" ]; then
-			printf 'SKIP %s -> %s（置き場が無い）\n' "$name" "${rel%%/*}"
-			continue
+# home/ の設定を Stow で張る。--no-folding はruntime stateをrepoへ入れないために必要。
+if ! command -v stow >/dev/null 2>&1; then
+	printf 'STOP stow が無いので設定を張れない\n' >&2
+	printf '     brew install stow を実行してから、もう一度これを走らせる\n' >&2
+	blocked=$((blocked + 1))
+else
+	# 以前の配布が作った、repo/home fileを直接指す絶対symlinkをStowの形へ戻す。
+	owned_links=()
+	while IFS= read -r source; do
+		rel=${source#"$repo/home/"}
+		dest="$stow_target/$rel"
+		if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$source" ]; then
+			rm "$dest"
+			owned_links+=("$dest:$source")
 		fi
-		link_one "$dir/$name" "$agents/$name" "${name} -> ${rel%%/*}"
-	done
-done
+	done < <(find "$repo/home" -type f)
 
-# 3. home/ の設定を stow で $HOME へ張る。
-#
-# 🔴 --no-folding を外さない。張り先のディレクトリが無いとき、stow は
-# ディレクトリごと1本の symlink にする（folding）。~/.config/herdr/ には
-# ソケットとログが同居するので、畳むと repo の中にランタイムが作られる。
-if [ -d "$repo/home" ]; then
-	if ! command -v stow >/dev/null 2>&1; then
-		printf 'STOP stow が無いので設定を張れない\n' >&2
-		printf '     brew install stow を実行してから、もう一度これを走らせる\n' >&2
-		blocked=$((blocked + 1))
-	else
-		# 以前の配布が作った、正本を直接指す絶対 symlink を stow の形へ戻す。
-		# 他人の symlink は触らない。dry-run が別の衝突で止まれば元に戻す。
-		owned_links=()
-		while IFS= read -r source; do
-			rel=${source#"$repo/home/"}
-			dest="$stow_target/$rel"
-			if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$source" ]; then
-				rm "$dest"
-				owned_links+=("$dest:$source")
-			fi
-		done < <(find "$repo/home" -type f)
+	plan=$(stow -n -v 2 --no-folding -d "$repo" -t "$stow_target" home 2>&1 || true)
+	if [[ $plan == *"would cause conflicts"* ]]; then
+		for entry in "${owned_links[@]}"; do
+			ln -s "${entry#*:}" "${entry%%:*}"
+		done
+	fi
+	case "$plan" in
+	*"LINK: "* | *"MKDIR: "*) pending=yes ;;
+	*) pending=no ;;
+	esac
 
-		# 張る前に、張るものが残っているかを見ておく。
-		# 何もしていないのに「張った」と数えると、報告が実態とずれる。
-		# パイプにしない——grep -q が先に閉じると pipefail で stow が失敗扱いになる。
-		plan=$(stow -n -v 2 --no-folding -d "$repo" -t "$stow_target" home 2>&1 || true)
-		if [[ $plan == *"would cause conflicts"* ]]; then
-			for entry in "${owned_links[@]}"; do
-				ln -s "${entry#*:}" "${entry%%:*}"
-			done
-		fi
-		case "$plan" in
-		*"LINK: "* | *"MKDIR: "*) pending=yes ;;
-		*) pending=no ;;
-		esac
-
-		if stow --no-folding -d "$repo" -t "$stow_target" home; then
-			if [ "$pending" = yes ]; then
-				printf 'STOW home -> %s\n' "$stow_target"
-				linked=$((linked + 1))
-			else
-				printf 'OK   home は張り済み\n'
-				skipped=$((skipped + 1))
-			fi
+	if stow --no-folding -d "$repo" -t "$stow_target" home; then
+		if [ "$pending" = yes ]; then
+			printf 'STOW home -> %s\n' "$stow_target"
+			linked=$((linked + 1))
 		else
-			printf 'STOP 設定の張り先に実体がある。中身を %s/home へ移してから消す\n' "$repo" >&2
-			blocked=$((blocked + 1))
+			printf 'OK   home は張り済み\n'
+			skipped=$((skipped + 1))
 		fi
+	else
+		printf 'STOP 設定の張り先に実体または別管理linkがある。中身を %s/home へ移してから消す\n' "$repo" >&2
+		blocked=$((blocked + 1))
 	fi
 fi
 
-# repoが配ったOpenCode commandだけを退役させる。OpenCode配下の別管理設定は触らない。
-for retired_command in annotate-last annotate-review; do
-	dest="$stow_target/.config/opencode/commands/$retired_command.md"
-	[ -L "$dest" ] || continue
-	target=$(readlink "$dest")
-	resolved=$(python3 -c 'import os,sys; print(os.path.abspath(os.path.join(os.path.dirname(sys.argv[1]),sys.argv[2])))' "$dest" "$target" 2>/dev/null || true)
-	if [ "$resolved" = "$repo/home/.config/opencode/commands/$retired_command.md" ]; then
+# repoが配った退役済みlinkだけを撤去する。
+remove_retired_link() {
+	local dest=$1 source=$2 label=$3
+	if link_points_to "$dest" "$source"; then
 		rm "$dest"
-		printf 'REMOVE 旧OpenCode command %s\n' "$retired_command"
+		printf 'REMOVE %s\n' "$label"
 	fi
+}
+
+for retired_command in annotate-last annotate-review; do
+	remove_retired_link "$stow_target/.config/opencode/commands/$retired_command.md" "$repo/home/.config/opencode/commands/$retired_command.md" "旧OpenCode command $retired_command"
 done
 rmdir "$stow_target/.config/opencode/commands" 2>/dev/null || true
 
-# 旧独自ランチャーの配信リンクだけを退役させる。別管理の実体・リンクには触れない。
-legacy="$stow_target/.pi/agent/extensions/parallel-review.ts"
-if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then
-	target=$(readlink "$legacy")
-	case "$target" in
-	/*) candidate=$target ;;
-	*) candidate="$(dirname "$legacy")/$target" ;;
-	esac
-	resolved="$(cd -P "$(dirname "$candidate")" 2>/dev/null && pwd)/$(basename "$candidate")" || resolved=""
-	if [ "$resolved" = "$repo/home/.pi/agent/extensions/parallel-review.ts" ]; then
-		rm "$legacy"
-		printf 'REMOVE 旧 parallel-review の配信リンク\n'
-	fi
-fi
-
-# 退役したPi extensionの配信リンクだけを撤去する。別管理の実体・リンクには触れない。
+remove_retired_link "$stow_target/.pi/agent/extensions/parallel-review.ts" "$repo/home/.pi/agent/extensions/parallel-review.ts" '旧 parallel-review の配信link'
 for retired_pi_file in codex-jev-router.json extensions/codex-jev-router.ts extensions/workflow-command.ts; do
-	legacy="$stow_target/.pi/agent/$retired_pi_file"
-	if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then
-		target=$(readlink "$legacy")
-		case "$target" in
-		/*) candidate=$target ;;
-		*) candidate="$(dirname "$legacy")/$target" ;;
-		esac
-		resolved="$(cd -P "$(dirname "$candidate")" 2>/dev/null && pwd)/$(basename "$candidate")" || resolved=""
-		if [ "$resolved" = "$repo/home/.pi/agent/$retired_pi_file" ]; then
-			rm "$legacy"
-			printf 'REMOVE 退役Pi extension %s\n' "$retired_pi_file"
-		fi
-	fi
+	remove_retired_link "$stow_target/.pi/agent/$retired_pi_file" "$repo/home/.pi/agent/$retired_pi_file" "退役Pi extension $retired_pi_file"
 done
-
-# Pi内部subagentでだけ使ったagent定義も、repoが配ったlinkだけを撤去する。
 for retired_agent in survey standards spec; do
-	legacy="$stow_target/.pi/agent/agents/$retired_agent.md"
-	if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then
-		target=$(readlink "$legacy")
-		case "$target" in
-		/*) candidate=$target ;;
-		*) candidate="$(dirname "$legacy")/$target" ;;
-		esac
-		resolved="$(cd -P "$(dirname "$candidate")" 2>/dev/null && pwd)/$(basename "$candidate")" || resolved=""
-		if [ "$resolved" = "$repo/home/.pi/agent/agents/$retired_agent.md" ]; then
-			rm "$legacy"
-			printf 'REMOVE 旧 %s 定義の配信リンク\n' "$retired_agent"
-		fi
-	fi
+	remove_retired_link "$stow_target/.pi/agent/agents/$retired_agent.md" "$repo/home/.pi/agent/agents/$retired_agent.md" "旧$retired_agent 定義"
 done
 
 printf '\n張った %s / 済み %s / 止めた %s\n' "$linked" "$skipped" "$blocked"
-printf '正本:   %s\n' "$agents"
-printf '配り先: %s\n' "${consumers[*]}"
+printf '正本:   %s/.agents/skills\n' "$stow_target"
 printf '設定:   %s\n' "$stow_target"
 exit "$blocked"

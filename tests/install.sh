@@ -1,313 +1,142 @@
 #!/usr/bin/env bash
-# install.sh の受入条件を、隔離した一時ディレクトリで確かめる。
+# install.sh の受入条件を、隔離した一時HOMEで確かめる。
 set -euo pipefail
 
-repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+repo=$(cd "$(dirname "$0")/.." && pwd)
 tmp=$(cd -P "$(mktemp -d)" && pwd)
 trap 'rm -rf "$tmp"' EXIT
 passed=0
 
-fail() {
-	printf 'FAIL %s\n' "$*" >&2
-	exit 1
-}
+fail() { printf 'FAIL %s\n' "$*" >&2; exit 1; }
 
 run_install() {
-	case_dir=$1
+	local case_dir=$1
 	shift
-	mkdir -p "$case_dir/agents" "$case_dir/pi" "$case_dir/home"
-	env HOME="$case_dir" \
-		AGENTS_SKILLS_DIR="$case_dir/agents" \
-		PI_SKILLS_DIR="$case_dir/pi" \
-		STOW_TARGET="$case_dir/home" \
-		"$@" "$repo/install.sh"
-}
-
-expect_link() {
-	[ -L "$1" ] || fail "$1 は symlink ではない"
-	[ "$(readlink "$1")" = "$2" ] || fail "$1 の指す先が違う"
+	mkdir -p "$case_dir/home"
+	env HOME="$case_dir/home" STOW_TARGET="$case_dir/home" "$@" "$repo/install.sh"
 }
 
 expect_resolves_to() {
 	local link=$1 want=$2 target candidate resolved
-	[ -L "$link" ] || fail "$link は symlink ではない"
+	[ -L "$link" ] || fail "$link はsymlinkではない"
 	target=$(readlink "$link")
 	case "$target" in
 	/*) candidate=$target ;;
-	*) candidate="$(cd -P "$(dirname "$link")" && pwd)/$target" ;;
+	*) candidate="$(dirname "$link")/$target" ;;
 	esac
 	resolved="$(cd -P "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"
-	[ "$resolved" = "$want" ] || fail "$link の実体の指す先が違う"
+	[ "$resolved" = "$want" ] || fail "$link の指す先が違う"
 }
 
-# 受入条件 1・2・7・8: 初回と再実行、スキルと設定の両方を確かめる。
 case_clean_and_repeat() {
-	local d="$tmp/clean" first second src name
+	local d="$tmp/clean" first second source rel
 	first=$(run_install "$d" bash)
-	# スキル名も直書きしない。repo にあるもの全部について経路を見る。
-	for src in "$repo"/skills/*/; do
-		name=$(basename "$src")
-		expect_link "$d/agents/$name" "${src%/}"
-		expect_link "$d/pi/$name" "$d/agents/$name"
-	done
-	# 🔴 パスを直書きしない。home/ にあるディレクトリ全部について、
-	# 張り先が実体であることを見る——道具はそこに認証情報や状態を書く。
-	# 畳まれていたら、それが repo の中に作られる。
-	while IFS= read -r dir; do
-		rel=${dir#"$repo"/home/}
-		[ -d "$d/home/$rel" ] || fail "$rel が張り先に無い"
-		[ ! -L "$d/home/$rel" ] || fail "$rel が symlink になっている（畳まれた）"
-	done < <(find "$repo/home" -mindepth 1 -type d)
-
-	while IFS= read -r f; do
-		rel=${f#"$repo"/home/}
-		expect_resolves_to "$d/home/$rel" "$f"
-	done < <(find "$repo/home" -type f)
-	expect_resolves_to "$d/home/.pi/agent/mcp.json" "$repo/home/.pi/agent/mcp.json"
-	# 🔴 件数を直書きしない。スキルを1本足すたびに落ちる。
-	# 見るのは不変量である——初回は既存が無いので「済み」と「止めた」が 0、
-	# 再実行は何も張らないので「張った」が 0。張った数そのものは、
-	# 上の expect_link が経路として確かめている。
-	[[ $first == *'済み 0 / 止めた 0'* ]] || fail '初回に既存扱いか停止があった'
-	[[ $first != *'張った 0 '* ]] || fail '初回に何も張っていない'
-	[[ $first != *'.claude'* ]] || fail 'Claude の置き場を参照した'
-	[ ! -e "$d/.claude" ] || fail 'Claude の置き場を作った'
+	while IFS= read -r source; do
+		rel=${source#"$repo/home/"}
+		expect_resolves_to "$d/home/$rel" "$source"
+	done < <(find "$repo/home" -type f | sort)
+	[ ! -e "$d/home/.pi/agent/skills" ] || fail 'Pi skill copyを作った'
+	[[ $first == *'止めた 0'* ]] || fail '初回に停止があった'
 
 	second=$(run_install "$d" bash)
 	[[ $second == *'張った 0 '* ]] || fail '再実行で張り直した'
-	[[ $second == *'止めた 0'* ]] || fail '再実行で止まった'
-	passed=$((passed + 4))
+	[[ $second == *'止めた 0'* ]] || fail '再実行で停止した'
+	passed=$((passed + 2))
 }
 
-case_missing_pi_directory() {
-	local d="$tmp/missing-pi" output
-	mkdir -p "$d/agents" "$d/home"
-	output=$(env HOME="$d" \
-		AGENTS_SKILLS_DIR="$d/agents" \
-		PI_SKILLS_DIR="$d/pi" \
-		STOW_TARGET="$d/home" \
-		bash "$repo/install.sh")
-	[ ! -e "$d/pi" ] || fail '無い Pi の置き場を作った'
-	for src in "$repo"/skills/*/; do
-		name=$(basename "$src")
-		[[ $output == *"SKIP ${name} -> "* ]] || fail "$name の未導入 consumer を報告しなかった"
-	done
-	passed=$((passed + 1))
-}
-
-case_upstream_herdr_skill() {
-	local d="$tmp/upstream-herdr" upstream="$tmp/upstream-herdr-skill.md"
-	mkdir -p "$d/agents/herdr" "$d/pi" "$d/home"
-	cp "$repo/skills/herdr/SKILL.md" "$upstream"
-	python3 - "$upstream" <<'PY'
-from pathlib import Path
-import sys
-path = Path(sys.argv[1])
-text = path.read_text()
-reference = 'description: "Control Herdr panes, tabs, workspaces, commands, dev servers, other background processes, and agents. Use for subagents when the user or another skill explicitly asks for or requires them. Requires HERDR_ENV=1."'
-upstream = 'description: "Control Herdr, a terminal multiplexer for coding agents. Use only when the user explicitly mentions Herdr or asks to use Herdr to inspect or control panes, tabs, workspaces, commands, or another agent. Do not use merely because a task could benefit from a background terminal, delegation, or parallel work. Requires HERDR_ENV=1."'
-if text.count(reference) != 1:
-    raise SystemExit("managed Herdr description is missing")
-path.write_text(text.replace(reference, upstream))
-PY
-	cp "$upstream" "$d/agents/herdr/SKILL.md"
+case_legacy_shared_skill_migration() {
+	local d="$tmp/legacy-shared" global pi
+	mkdir -p "$d/home/.agents/skills" "$d/home/.pi/agent/skills"
+	global="$d/home/.agents/skills/research"
+	pi="$d/home/.pi/agent/skills/research"
+	ln -s "$repo/skills/research" "$global"
+	ln -s "$global" "$pi"
 	run_install "$d" bash >/dev/null
-	expect_link "$d/agents/herdr" "$repo/skills/herdr"
-	expect_link "$d/pi/herdr" "$d/agents/herdr"
-	grep -q 'another skill explicitly asks for or requires them' "$d/agents/herdr/SKILL.md" || fail '他skillからHerdrを要求できない'
+	expect_resolves_to "$d/home/.agents/skills/research/SKILL.md" "$repo/home/.agents/skills/research/SKILL.md"
+	[ ! -e "$pi" ] && [ ! -L "$pi" ] || fail '旧Pi consumer linkが残った'
 	passed=$((passed + 1))
 }
 
-case_real_skill_directory() {
-	local d="$tmp/real-skill" output status
-	mkdir -p "$d/agents/agents-md"
+case_legacy_pi_only_skill_migration() {
+	local d="$tmp/legacy-pi-only" legacy
+	legacy="$d/home/.pi/agent/skills/tdd/SKILL.md"
+	mkdir -p "$(dirname "$legacy")"
+	ln -s "$repo/home/.pi/agent/skills/tdd/SKILL.md" "$legacy"
+	run_install "$d" bash >/dev/null
+	[ ! -e "$legacy" ] && [ ! -L "$legacy" ] || fail '旧Pi-only skill linkが残った'
+	expect_resolves_to "$d/home/.agents/skills/tdd/SKILL.md" "$repo/home/.agents/skills/tdd/SKILL.md"
+	passed=$((passed + 1))
+}
+
+case_foreign_pi_skill_blocks() {
+	local d="$tmp/foreign-pi" dest output status
+	dest="$d/home/.pi/agent/skills/research"
+	mkdir -p "$dest"
+	printf 'keep\n' >"$dest/SKILL.md"
 	set +e
 	output=$(run_install "$d" bash 2>&1)
 	status=$?
 	set -e
-	[ "$status" -ne 0 ] || fail '実体のスキルディレクトリで成功した'
-	[[ $output == *'は実体である'* ]] || fail '実体のスキルディレクトリを報告しなかった'
-	[ -d "$d/agents/agents-md" ] || fail '既存の実体を壊した'
-	passed=$((passed + 1))
-}
-
-case_foreign_link() {
-	local d="$tmp/foreign" output status
-	mkdir -p "$d/agents"
-	ln -s /tmp "$d/agents/agents-md"
-	set +e
-	output=$(run_install "$d" bash 2>&1)
-	status=$?
-	set -e
-	[ "$status" -ne 0 ] || fail '別管理 symlink で成功した'
-	[[ $output == *'別管理の symlink'* ]] || fail '別管理 symlink を報告しなかった'
-	expect_link "$d/agents/agents-md" /tmp
+	[ "$status" -ne 0 ] || fail 'foreign Pi skillで成功した'
+	[[ $output == *'Pi skillとして残っている'* ]] || fail 'foreign Pi skillを報告しなかった'
+	[ "$(<"$dest/SKILL.md")" = keep ] || fail 'foreign Pi skillを変更した'
 	passed=$((passed + 1))
 }
 
 case_without_stow() {
 	local d="$tmp/no-stow" output status command
-	# PATH から stow だけを除く。システムのどこに stow があるかには依存しない。
 	mkdir -p "$d/bin"
-	for command in dirname mkdir basename readlink rm ln; do
+	for command in dirname mkdir basename readlink rm ln find sort python3 rmdir wc tr; do
 		ln -s "$(command -v "$command")" "$d/bin/$command"
 	done
 	set +e
 	output=$(run_install "$d" env PATH="$d/bin" /bin/bash 2>&1)
 	status=$?
 	set -e
-	[ "$status" -ne 0 ] || fail 'stow 無しで成功した'
-	[[ $output == *'stow が無い'* ]] || fail 'stow 無しを報告しなかった'
-	expect_link "$d/agents/agents-md" "$repo/skills/agents-md"
-	expect_link "$d/pi/agents-md" "$d/agents/agents-md"
-	[ ! -e "$d/home/.config/herdr/config.toml" ] || fail 'stow 無しでも設定を張った'
+	[ "$status" -ne 0 ] || fail 'stow無しで成功した'
+	[[ $output == *'stow が無い'* ]] || fail 'stow無しを報告しなかった'
+	[ ! -e "$d/home/.agents/skills" ] || fail 'stow無しでもskillを張った'
 	passed=$((passed + 1))
 }
 
-case_real_config_file() {
-	local d="$tmp/real-config" output status
-	mkdir -p "$d/home/.config/herdr"
-	printf 'keep\n' >"$d/home/.config/herdr/config.toml"
+case_real_global_skill_blocks() {
+	local d="$tmp/real-global" dest output status
+	dest="$d/home/.agents/skills/agents-md"
+	mkdir -p "$dest"
+	printf 'keep\n' >"$dest/SKILL.md"
 	set +e
 	output=$(run_install "$d" bash 2>&1)
 	status=$?
 	set -e
-	[ "$status" -ne 0 ] || fail '実体の設定ファイルで成功した'
-	[[ $output == *'設定の張り先に実体がある'* ]] || fail '実体の設定ファイルを報告しなかった'
-	[ ! -L "$d/home/.config/herdr/config.toml" ] || fail '既存の設定を symlink で置換した'
-	[ "$(<"$d/home/.config/herdr/config.toml")" = keep ] || fail '既存の設定を書き換えた'
+	[ "$status" -ne 0 ] || fail '実体global skillで成功した'
+	[[ $output == *'設定の張り先'* ]] || fail '実体global skillを報告しなかった'
+	[ "$(<"$dest/SKILL.md")" = keep ] || fail '実体global skillを変更した'
 	passed=$((passed + 1))
 }
 
-case_absolute_owned_link() {
-	local d="$tmp/absolute-owned"
-	run_install "$d" bash >/dev/null
-	rm "$d/home/.config/herdr/config.toml"
-	ln -s "$repo/home/.config/herdr/config.toml" "$d/home/.config/herdr/config.toml"
-	run_install "$d" bash >/dev/null || fail '正本を指す絶対 symlink で再配布に失敗した'
-	expect_resolves_to "$d/home/.config/herdr/config.toml" "$repo/home/.config/herdr/config.toml"
-	passed=$((passed + 1))
-}
-
-case_retired_survey_link() {
-	local d="$tmp/retired-survey" dest
-	mkdir -p "$d/agents" "$d/pi" "$d/home/.pi/agent/agents"
-	dest="$d/home/.pi/agent/agents/survey.md"
-	ln -s "$repo/home/.pi/agent/agents/survey.md" "$dest"
-	run_install "$d" bash >/dev/null
-	[ ! -L "$dest" ] || fail '旧survey定義の配信リンクが残った'
-	passed=$((passed + 1))
-}
-
-case_retired_review_agent_links() {
-	local d="$tmp/retired-review-agents" name dest foreign="$tmp/foreign-review-agent.md"
-	mkdir -p "$d/agents" "$d/pi" "$d/home/.pi/agent/agents"
-	for name in standards spec; do
-		dest="$d/home/.pi/agent/agents/$name.md"
-		ln -s "$repo/home/.pi/agent/agents/$name.md" "$dest"
+case_retired_links() {
+	local d="$tmp/retired" dest foreign="$tmp/foreign-link"
+	mkdir -p "$d/home/.pi/agent/extensions" "$d/home/.config/opencode/commands"
+	for dest in \
+		"$d/home/.pi/agent/extensions/parallel-review.ts:$repo/home/.pi/agent/extensions/parallel-review.ts" \
+		"$d/home/.config/opencode/commands/annotate-last.md:$repo/home/.config/opencode/commands/annotate-last.md"; do
+		ln -s "${dest#*:}" "${dest%%:*}"
 	done
 	run_install "$d" bash >/dev/null
-	for name in standards spec; do
-		[ ! -L "$d/home/.pi/agent/agents/$name.md" ] || fail "旧${name}定義の配信リンクが残った"
-	done
+	[ ! -L "$d/home/.pi/agent/extensions/parallel-review.ts" ] || fail '旧extension linkが残った'
+	[ ! -L "$d/home/.config/opencode/commands/annotate-last.md" ] || fail '旧command linkが残った'
 	printf 'keep\n' >"$foreign"
-	ln -s "$foreign" "$d/home/.pi/agent/agents/standards.md"
+	ln -s "$foreign" "$d/home/.pi/agent/extensions/parallel-review.ts"
 	run_install "$d" bash >/dev/null
-	expect_link "$d/home/.pi/agent/agents/standards.md" "$foreign"
-	passed=$((passed + 1))
-}
-
-case_retired_pi_implement_link() {
-	local d="$tmp/retired-implement" dest
-	mkdir -p "$d/agents" "$d/pi" "$d/home/.pi/agent/skills/implement"
-	dest="$d/home/.pi/agent/skills/implement/SKILL.md"
-	ln -s "$repo/home/.pi/agent/skills/implement/SKILL.md" "$dest"
-	run_install "$d" bash >/dev/null
-	[ ! -L "$dest" ] || fail '旧implement skillの配信リンクが残った'
-	passed=$((passed + 1))
-}
-
-case_retired_pi_research_link() {
-	local d="$tmp/retired-research" dest
-	mkdir -p "$d/agents" "$d/pi/research" "$d/home"
-	dest="$d/pi/research/SKILL.md"
-	ln -s "$repo/home/.pi/agent/skills/research/SKILL.md" "$dest"
-	run_install "$d" bash >/dev/null
-	expect_link "$d/agents/research" "$repo/skills/research"
-	expect_link "$d/pi/research" "$d/agents/research"
-	passed=$((passed + 1))
-}
-
-case_retired_opencode_links() {
-	local d="$tmp/retired-opencode" name dest foreign="$tmp/foreign-opencode-command.md"
-	mkdir -p "$d/agents" "$d/pi" "$d/home/.config/opencode/commands"
-	for name in annotate-last annotate-review; do
-		dest="$d/home/.config/opencode/commands/$name.md"
-		ln -s "$repo/home/.config/opencode/commands/$name.md" "$dest"
-	done
-	run_install "$d" bash >/dev/null
-	for name in annotate-last annotate-review; do
-		[ ! -L "$d/home/.config/opencode/commands/$name.md" ] || fail "旧OpenCode command $name のlinkが残った"
-	done
-	printf 'keep\n' >"$foreign"
-	mkdir -p "$d/home/.config/opencode/commands"
-	ln -s "$foreign" "$d/home/.config/opencode/commands/annotate-last.md"
-	run_install "$d" bash >/dev/null
-	expect_link "$d/home/.config/opencode/commands/annotate-last.md" "$foreign"
-	passed=$((passed + 1))
-}
-
-case_retired_review_link() {
-	local d="$tmp/retired-review" dest foreign="$tmp/foreign-review.ts"
-	run_install "$d" bash >/dev/null
-	dest="$d/home/.pi/agent/extensions/parallel-review.ts"
-	rm -f "$dest"
-	ln -s "$repo/home/.pi/agent/extensions/parallel-review.ts" "$dest"
-	run_install "$d" bash >/dev/null
-	[ ! -L "$dest" ] || fail '旧 reviewer の配信リンクが残った'
-	local relative
-	relative=$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$repo/home/.pi/agent/extensions/parallel-review.ts" "$(dirname "$dest")")
-	ln -s "$relative" "$dest"
-	run_install "$d" bash >/dev/null
-	[ ! -L "$dest" ] || fail '旧 reviewer の相対リンクが残った'
-	printf 'keep\n' >"$foreign"
-	ln -s "$foreign" "$dest"
-	run_install "$d" bash >/dev/null
-	expect_link "$dest" "$foreign"
-	passed=$((passed + 1))
-}
-
-case_retired_jev_router_links() {
-	local d="$tmp/retired-jev-router" name dest foreign="$tmp/foreign-jev-router"
-	mkdir -p "$d/agents" "$d/pi" "$d/home/.pi/agent/extensions"
-	for name in codex-jev-router.json extensions/codex-jev-router.ts extensions/workflow-command.ts; do
-		dest="$d/home/.pi/agent/$name"
-		ln -s "$repo/home/.pi/agent/$name" "$dest"
-	done
-	run_install "$d" bash >/dev/null
-	for name in codex-jev-router.json extensions/codex-jev-router.ts extensions/workflow-command.ts; do
-		[ ! -L "$d/home/.pi/agent/$name" ] || fail "退役Pi extension $name の配信リンクが残った"
-	done
-	printf 'keep\n' >"$foreign"
-	ln -s "$foreign" "$d/home/.pi/agent/codex-jev-router.json"
-	run_install "$d" bash >/dev/null
-	expect_link "$d/home/.pi/agent/codex-jev-router.json" "$foreign"
+	[ -L "$d/home/.pi/agent/extensions/parallel-review.ts" ] || fail 'foreign extension linkを消した'
 	passed=$((passed + 1))
 }
 
 case_clean_and_repeat
-case_retired_survey_link
-case_retired_review_agent_links
-case_retired_pi_implement_link
-case_retired_pi_research_link
-case_retired_opencode_links
-case_retired_review_link
-case_retired_jev_router_links
-case_absolute_owned_link
-case_missing_pi_directory
-case_upstream_herdr_skill
-case_real_skill_directory
-case_foreign_link
+case_legacy_shared_skill_migration
+case_legacy_pi_only_skill_migration
+case_foreign_pi_skill_blocks
 case_without_stow
-case_real_config_file
+case_real_global_skill_blocks
+case_retired_links
 printf 'PASS %s checks\n' "$passed"

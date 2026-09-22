@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-helper="$repo/skills/worktrees/scripts/new-worktree.sh"
+helper="$repo/home/.agents/skills/worktrees/scripts/new-worktree.sh"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 

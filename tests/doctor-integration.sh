@@ -10,7 +10,7 @@ trap 'rm -rf "$tmp"' EXIT
 # canonical layout が、ここで作る HOME の配置を指し替えないようにする。
 doctor_repo="$tmp/doctor-repo"
 mkdir "$doctor_repo" "$doctor_repo/tests"
-cp -R "$repo/skills" "$repo/home" "$repo/packages" "$doctor_repo/"
+cp -R "$repo/home" "$repo/packages" "$doctor_repo/"
 cp "$repo/install.sh" "$doctor_repo/install.sh"
 cp "$repo/tests/doctor.sh" "$doctor_repo/tests/doctor.sh"
 
@@ -20,7 +20,6 @@ fail() {
 }
 
 # install.sh が作る配置を使う。実際の HOME には書かない。
-mkdir -p "$tmp/.pi/agent/skills"
 env HOME="$tmp" "$doctor_repo/install.sh" >/dev/null
 printf '#!/usr/bin/env bash\nexit 0\n' >"$tmp/plannotator-tui"
 chmod +x "$tmp/plannotator-tui"
@@ -125,9 +124,12 @@ git -C "$canonical" worktree add "$canonical/main" HEAD >/dev/null 2>&1
 git -C "$canonical" worktree add "$canonical/a-topic" HEAD >/dev/null 2>&1
 # main より辞書順で先に現れる topic worktree 上で、作業中の doctor を実行する。
 cp "$repo/tests/doctor.sh" "$canonical/a-topic/tests/doctor.sh"
+cp "$repo/install.sh" "$canonical/main/install.sh"
+rm -rf "$canonical/main/home/.agents"
+cp -R "$repo/home/.agents" "$canonical/main/home/.agents"
 cp "$repo/home/.config/herdr/config.toml" "$canonical/main/home/.config/herdr/config.toml"
 cp "$repo/home/.pi/agent/mcp.json" "$canonical/main/home/.pi/agent/mcp.json"
-mkdir -p "$canonical_home/.pi/agent/skills"
+mkdir -p "$canonical_home"
 env HOME="$canonical_home" "$canonical/main/install.sh" >/dev/null
 
 set +e
@@ -135,7 +137,7 @@ out=$(env HOME="$canonical_home" "$canonical/a-topic/tests/doctor.sh" 2>&1)
 status=$?
 set -e
 [ "$status" -eq 0 ] || fail "canonical main ではなく bare root または topic を正本にした: $out"
-[[ $out == *'agents-md は正本に届いている'* ]] || fail 'canonical main のスキルを確認しなかった'
+[[ $out == *'agents-md はglobal skillに届いている'* ]] || fail 'canonical main のスキルを確認しなかった'
 
 # canonical .bare root に main が無い場合、doctor は呼び出した topic ではなく、
 # 最初の linked worktree を正本として fallback する。
@@ -148,9 +150,12 @@ git -C "$fallback_canonical" worktree add "$fallback_canonical/a-fallback" HEAD 
 git -C "$fallback_canonical" worktree add "$fallback_canonical/z-topic" HEAD >/dev/null 2>&1
 [ ! -e "$fallback_canonical/main" ] || fail 'fallback 用 canonical root に main がある'
 cp "$repo/tests/doctor.sh" "$fallback_canonical/z-topic/tests/doctor.sh"
+cp "$repo/install.sh" "$fallback_canonical/a-fallback/install.sh"
+rm -rf "$fallback_canonical/a-fallback/home/.agents"
+cp -R "$repo/home/.agents" "$fallback_canonical/a-fallback/home/.agents"
 cp "$repo/home/.config/herdr/config.toml" "$fallback_canonical/a-fallback/home/.config/herdr/config.toml"
 cp "$repo/home/.pi/agent/mcp.json" "$fallback_canonical/a-fallback/home/.pi/agent/mcp.json"
-mkdir -p "$fallback_home/.pi/agent/skills"
+mkdir -p "$fallback_home"
 env HOME="$fallback_home" "$fallback_canonical/a-fallback/install.sh" >/dev/null
 
 set +e
@@ -158,5 +163,5 @@ out=$(env HOME="$fallback_home" "$fallback_canonical/z-topic/tests/doctor.sh" 2>
 status=$?
 set -e
 [ "$status" -eq 0 ] || fail "main の無い canonical root で linked worktree へ fallback しなかった: $out"
-[[ $out == *'agents-md は正本に届いている'* ]] || fail 'fallback linked worktree のスキルを確認しなかった'
+[[ $out == *'agents-md はglobal skillに届いている'* ]] || fail 'fallback linked worktree のスキルを確認しなかった'
 printf 'PASS doctor integration checks\n'

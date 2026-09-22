@@ -26,10 +26,7 @@ else
 	')
 	[ -n "$main_worktree" ] && [ -d "$main_worktree" ] && repo=$main_worktree
 fi
-agents="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
-consumers=(
-	"${PI_SKILLS_DIR:-$HOME/.pi/agent/skills}"
-)
+agents="$HOME/.agents/skills"
 
 ok_count=0
 warn_count=0
@@ -61,31 +58,15 @@ resolve() {
 	printf '%s' "$(cd -P "$(dirname "$target")" && pwd)/$(basename "$target")"
 }
 
-# 1. スキルが repo から正本を経て各エージェントへ届いているか（D-13）
-for src in "$repo"/skills/*/; do
+# 1. skill の唯一の正本が Stow を通じて global discovery path に届いているか（D-13）
+for src in "$repo"/home/.agents/skills/*/; do
 	[ -d "$src" ] || continue
 	name=$(basename "$src")
-
-	agent_dest="$(cd -P "$(dirname "$agents/$name")" && pwd)/$name"
-	if [ "$(resolve "$agents/$name")" = "${src%/}" ]; then
-		ok "$name は正本に届いている"
+	if [ -f "$agents/$name/SKILL.md" ] && [ "$(resolve "$agents/$name/SKILL.md")" = "${src%/}/SKILL.md" ]; then
+		ok "$name はglobal skillに届いている"
 	else
-		bad "$name が正本に無い。./install.sh を走らせる"
-		continue
+		bad "$name がglobal skillに無い。./install.sh を走らせる"
 	fi
-
-	for dir in "${consumers[@]}"; do
-		label=${dir#"$HOME"/}
-		label=${label%%/*}
-		# 経路は2段ある。段ごとに見る——どちらが切れたか分かる。
-		if [ ! -d "$dir" ]; then
-			skip "$name -> $label（置き場が無い）"
-		elif [ "$(resolve "$dir/$name")" = "$agent_dest" ]; then
-			ok "$name -> $label"
-		else
-			bad "$name が $label へ届いていない。./install.sh を走らせる"
-		fi
-	done
 done
 
 # 2. 設定が repo を指しているか（D-11）
@@ -223,7 +204,7 @@ fi
 
 # 6. 管理下の置き場に、切れた symlink が無いか
 broken=0
-for dir in "$agents" "${consumers[@]}"; do
+for dir in "$agents"; do
 	[ -d "$dir" ] || continue
 	while IFS= read -r link; do
 		[ -e "$link" ] || {

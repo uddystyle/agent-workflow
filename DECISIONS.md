@@ -233,43 +233,21 @@ repo を正本にすれば、変える場所が1つになる。
 
 ⚠️ **上限が無いことは、何を書いてもよいことではない。** 書いてよいものは D-2 が決めている。
 
-## D-13 スキルの正本は `~/.agents/skills/` に置く
+## D-13 skill の正本は `home/.agents/skills/` に置く
 
-repo のスキルは、まず正本へ張り、そこから各エージェントの置き場へ配る。
-**エージェントの置き場へ直接張らない。**
+すべてのskillを `home/.agents/skills/<name>/` に置き、`home/` と同じStow経路で
+`~/.agents/skills/` へ置く。Piはglobal skill discoveryでその置き場を直接読む。
+**Piのskill置き場へcopyやconsumer symlinkを作らない。**
 
-**理由**: エージェントは増える。置き場ごとに repo から直接張ると、
-**同じスキルの張り先が種類の数だけ増える**。正本を1つ通せば、増えるのは配り先の1行で済む。
+**理由**: source、配布、Piの参照を1本の経路にすると、consumer別の配布設定、二段symlink、
+同名skill collision、退役cleanupを持たずに済む。Pi専用skillはこの単純さを崩すほどの隔離価値を持たない。
+project固有の通常commandや規約はprojectの`AGENTS.md`へ置く。
 
-**先にあった形に合流した**: このマシンには既に共有スキル群があり、
-Pi は**同じ正本を指していた**。私たちのスキルだけがその外にあったため、
-新しい構造を作るのではなく、**外れていた1件を戻した。**
+**代償**: `home/` はruntime stateをrepoへ入れないため`--no-folding`でStowする。skill directory全体ではなく
+中のfileが張られる場合があるが、Piが読むglobal pathとsourceの一意性は変わらない。
 
-**張り方**: 正本へは**ディレクトリごと** symlink する。repo にファイルを足しても張り直しが要らない。
-stow は使わない——設定には `--no-folding` が要るが、**スキルには畳んでほしい**（D-11）。
-
-**配り先**: 存在する置き場にだけ配る。入っていないエージェントのために作らない。
-
-**代償**: 経路が1段長くなる。壊れたとき、正本の段か配り先の段かを見分ける必要がある。
-
-### 消費者が1つのスキルは、正本を通さない（2026-09-06）
-
-**その道具の置き場に直接置く。** Pi だけに配るなら `home/.pi/agent/skills/<name>/` に置き、
-stow が `~/.pi/agent/skills/` へ張る。`skills/` には置かない。
-
-**理由**: 上の「エージェントは増える」が当たらない。
-**張り先が増える心配は、2つ以上が読むスキルの話**である。1つしか読まないものを正本へ通すと、
-将来その consumer が増えたとき、読まない側にも配られうる。`install.sh` は正本から、
-**設定された consumer 全て**へ配るからである。
-
-⚠️ **実際に配ってしまった。** Pi 用に書いたスキルを `skills/` に置いて `install.sh` を走らせ、
-意図しない consumer にも張られた。指摘を受けるまで気づいていない。
-🔴 **どこに置くかが、どの道具に配るかを決める**（D-11 の「置いた場所が仕様である」がここにも効く）。
-
-**判定**: 読む道具が**2つ以上か、1つか**。増えたときは `skills/` へ移し、正本を通す。
-
-⚠️ **`.gitignore` の除外に注意する。** `home/.pi/agent/*` を無視しているので、
-置き場を足すたびに `!` で戻さないと**追跡から外れる**。外れたことは `git status` に出ない。
+**移行**: 旧`skills/`のglobal linkと、repoが配った`~/.pi/agent/skills/`のlinkだけをinstall時に退役する。
+実体・別管理linkは削除せず停止する。後日orphanを探索して回収するstateは持たない。
 
 ## D-14 人の指摘をエージェントへ戻す経路を、機構にする
 
@@ -360,7 +338,7 @@ researchはHerdrのbackground paneへ渡す。`RESEARCH_SUBAGENT=1`をpane作成
 
 ### 過去の判断と実測（履歴。現在の課金・探索仕様の説明ではない）
 
-以下は当時の選択理由を残す記録である。現行手順は上記と `skills/code-review/SKILL.md` を使う。
+以下は当時の選択理由を残す記録である。現行手順は上記と `home/.agents/skills/code-review/SKILL.md` を使う。
 
 pi から子プロセスへ委譲できるようにする。最初は**調査とレビューの観点だけ**、
 **読むだけの道具**で。
@@ -540,7 +518,7 @@ Herdr同梱skillの本文を正本として保ち、descriptionだけを変更�
 **理由**: Researchのようなskillが既に配置と再帰防止を決めている場合、再びユーザーへHerdr利用の明示を求めると、
 skill間の委譲がそこで止まる。一方、「並列化できそう」という理由だけでHerdrを起動する条件には戻さない。
 
-`skills/herdr/SKILL.md`は`herdr --skill`との差をdescriptionだけに保つ。同梱版が実体として置かれている初回は、
+`home/.agents/skills/herdr/SKILL.md`は`herdr --skill`との差をdescriptionだけに保つ。同梱版が実体として置かれている初回は、
 本文が一致するときだけ`install.sh`がrepo管理へ移す。本文が変わっていれば上書きせず止める。
 
 ## D-21 checkout は canonical worktree root に並べる
@@ -555,7 +533,7 @@ repo 本体を bare（`.bare`）にし、`main` も topic も**対等な linked 
   🔴 このとき `install.sh` は危険である——**自分の置き場所を repo とみなす**ので、
   内側の worktree から走らせると、正本が**消える予定のディレクトリ**を指す
 
-手順は `skills/worktrees/SKILL.md` と同梱 helper に置く。参考先と同じ canonical layout を使う。
+手順は `home/.agents/skills/worktrees/SKILL.md` と同梱 helper に置く。参考先と同じ canonical layout を使う。
 
 **現行判断（参考先へ合わせる依頼による更新）**:
 
@@ -662,7 +640,7 @@ public inference、lintの証明範囲は`coding-standards`へ置く。public ex
 独立したfrontierは同じラウンドで進め、結果が戻ったら根拠を確認してtreeを再計算する。配車と回収の具体は
 起動する道具へ委ね、skillは依存関係だけを持つ。
 
-skillのmodel-invoked／manual-onlyとrouterの規律は`skills/writing-for-agents/SKILL-MECHANICS.md`へ分ける。
+skillのmodel-invoked／manual-onlyとrouterの規律は`home/.agents/skills/writing-for-agents/SKILL-MECHANICS.md`へ分ける。
 manual-only同士は自動到達できないため、人へ次のcommandを案内する。複数skillが読む材料は通常Markdownへ置き、
 一方のmanual-only skillへ隠さない。参考先`bdecd10b`の振る舞いを採用したが、license表示が無いため文章は写していない。
 

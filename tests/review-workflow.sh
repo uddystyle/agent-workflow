@@ -7,7 +7,7 @@ from pathlib import Path
 import os
 r=Path(os.environ['REPO'])
 def text(p): return (r/p).read_text()
-review=text('skills/code-review/SKILL.md')
+review=text('home/.agents/skills/code-review/SKILL.md')
 assert 'name: code-review' in review
 assert 'disable-model-invocation: true' in review
 assert 'parallel sub-agents' in review
@@ -19,7 +19,7 @@ assert '仕様なし' in review and '未評価' in review
 assert 'herdr ' not in review.lower()
 assert 'pane' not in review.lower() and 'tab' not in review.lower()
 assert 'PI_PROVIDER' not in review and 'PI_MODEL' not in review and 'PI_REASONING_LEVEL' not in review
-research=text('skills/research/SKILL.md')
+research=text('home/.agents/skills/research/SKILL.md')
 assert 'RESEARCH_SUBAGENT=1' in research
 assert 'herdr pane split' not in research
 assert 'herdr tab create' in research
@@ -36,12 +36,12 @@ assert 'herdr agent start research' in research
 assert 'herdr agent wait' in research
 assert research.index('herdr agent wait') < research.index('herdr agent get') < research.index('herdr agent read')
 assert '追加のagentやpaneを作らず' in research
-assert not (r/'home/.pi/agent/skills/research/SKILL.md').exists()
-alias=text('skills/two-axis-review/SKILL.md')
+assert not (r/'home/.pi/agent/skills').exists()
+alias=text('home/.agents/skills/two-axis-review/SKILL.md')
 assert 'disable-model-invocation: true' in alias
 assert '../code-review/SKILL.md' in alias
-assert 'disable-model-invocation: true' not in text('skills/worktrees/SKILL.md')
-standards=text('skills/coding-standards/SKILL.md')
+assert 'disable-model-invocation: true' not in text('home/.agents/skills/worktrees/SKILL.md')
+standards=text('home/.agents/skills/coding-standards/SKILL.md')
 assert 'provenance' in standards
 assert 'type-aware' in standards
 assert 'invocation' in standards
@@ -51,56 +51,56 @@ assert 'public export' in standards and 'type-only use' in standards
 assert '各option' in standards and 'caller' in standards
 assert '既存のdecision' in standards
 assert '型だけを置き換えた変更' in standards
-herdr=text('skills/herdr/SKILL.md')
+herdr=text('home/.agents/skills/herdr/SKILL.md')
 assert 'another skill explicitly asks for or requires them' in herdr
 assert 'Start and coordinate an agent' in herdr
 assert 'Default to a new tab in the current workspace' in herdr
 assert 'herdr tab create' in herdr and 'herdr tab close' in herdr
 assert 'only when the user explicitly requests a split' in herdr
-plannotator=text('skills/plannotator-tui/SKILL.md')
+plannotator=text('home/.agents/skills/plannotator-tui/SKILL.md')
 assert 'name: plannotator-tui' in plannotator
 assert 'disable-model-invocation: true' in plannotator
-tdd=text('home/.pi/agent/skills/tdd/SKILL.md')
+tdd=text('home/.agents/skills/tdd/SKILL.md')
 assert 'disable-model-invocation: true' in tdd
-assert 'disable-model-invocation: true' not in text('skills/writing-for-agents/SKILL.md')
-domain=text('home/.pi/agent/skills/domain-modeling/SKILL.md')
+assert 'disable-model-invocation: true' not in text('home/.agents/skills/writing-for-agents/SKILL.md')
+domain=text('home/.agents/skills/domain-modeling/SKILL.md')
 assert '## 4. 判断' not in domain
-grilling=text('home/.pi/agent/skills/grilling/SKILL.md')
+grilling=text('home/.agents/skills/grilling/SKILL.md')
 assert 'fact sub-agent' in grilling
 assert '依存する問いだけ' in grilling
 assert '独立したfrontier' in grilling
-grill=text('home/.pi/agent/skills/grill-with-docs/SKILL.md')
+grill=text('home/.agents/skills/grill-with-docs/SKILL.md')
 assert 'ADR' not in grill and '判断' not in grill
 assert 'HERDR_ENV=1' in plannotator
 assert 'plannotator-tui herdr open' in plannotator
 assert 'End your turn' in plannotator
 assert 'file://' in plannotator
-assert 'MIT License' in text('skills/plannotator-tui/LICENSE')
-writing=text('skills/writing-for-agents/SKILL.md')
-mechanics=text('skills/writing-for-agents/SKILL-MECHANICS.md')
+assert 'MIT License' in text('home/.agents/skills/plannotator-tui/LICENSE')
+writing=text('home/.agents/skills/writing-for-agents/SKILL.md')
+mechanics=text('home/.agents/skills/writing-for-agents/SKILL-MECHANICS.md')
 assert 'SKILL-MECHANICS.md' in writing
 assert 'model-invoked' in mechanics and 'manual-only' in mechanics
 assert 'router skill' in mechanics and '共有reference' in mechanics
-diagnosing=text('skills/diagnosing-bugs/SKILL.md')
+diagnosing=text('home/.agents/skills/diagnosing-bugs/SKILL.md')
 assert 'disable-model-invocation: true' not in diagnosing
 assert 'red-capable' in diagnosing and '3–5 ranked hypotheses' in diagnosing
 assert 'scripts/hitl-loop.template.sh' in diagnosing and '[DEBUG-' in diagnosing
-assert '321658273cb1d20b76026717d027d505790106d4' in text('skills/diagnosing-bugs/SOURCE.md')
-assert 'MIT License' in text('skills/diagnosing-bugs/LICENSE')
-discoverable=text('skills/write-discoverable-code/SKILL.md')
+assert '321658273cb1d20b76026717d027d505790106d4' in text('home/.agents/skills/diagnosing-bugs/SOURCE.md')
+assert 'MIT License' in text('home/.agents/skills/diagnosing-bugs/LICENSE')
+discoverable=text('home/.agents/skills/write-discoverable-code/SKILL.md')
 assert 'disable-model-invocation: true' not in discoverable
 assert 'One concept, one spelling' in discoverable and 'Keep strings whole' in discoverable
-assert 'edcdedb38a545f67c065f4084b3627517f0d79cf' in text('skills/write-discoverable-code/SOURCE.md')
-assert 'MIT License' in text('skills/write-discoverable-code/LICENSE')
+assert 'edcdedb38a545f67c065f4084b3627517f0d79cf' in text('home/.agents/skills/write-discoverable-code/SOURCE.md')
+assert 'MIT License' in text('home/.agents/skills/write-discoverable-code/LICENSE')
 assert not (r/'home/.pi/agent/skills/implement/SKILL.md').exists()
-assert not (r/'skills/cua-driver').exists()
-assert not (r/'skills/computer-use-mcp').exists()
+assert not (r/'home/.agents/skills/cua-driver').exists()
+assert not (r/'home/.agents/skills/computer-use-mcp').exists()
 assert not (r/'home/.pi/agent/extensions/parallel-review.ts').exists()
 assert not (r/'home/.pi/agent/agents/standards.md').exists()
 assert not (r/'home/.pi/agent/agents/spec.md').exists()
-for p in (r/'skills').glob('*/SKILL.md'):
+for p in (r/'home/.agents/skills').glob('*/SKILL.md'):
  if p.parent.name != 'herdr':
   assert p.stat().st_size<=10240,p
 print('PASS parallel review workflow contracts')
 PY
-bash -n "$repo/skills/diagnosing-bugs/scripts/hitl-loop.template.sh"
+bash -n "$repo/home/.agents/skills/diagnosing-bugs/scripts/hitl-loop.template.sh"

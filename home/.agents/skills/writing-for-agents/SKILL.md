@@ -5,7 +5,7 @@ description: エージェントの context に載る文書を書く。スキル�
 
 # エージェント向けに書く
 
-相手にするのは**エージェントの context に載る文書**である——`skills/*/SKILL.md`、`AGENTS.md`、
+相手にするのは**エージェントの context に載る文書**である——`home/.agents/skills/*/SKILL.md`、`AGENTS.md`、
 `DECISIONS.md`、`NEXT.md`、スクリプトの中のコメント。
 
 **この文書の唯一の規律**: 書く1行ごとに、**その行が既定の振る舞いを変えるか**を言えること。

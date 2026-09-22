@@ -7,7 +7,7 @@
 **印が HEAD より古いのは正常**である。疑うかどうかは、**説明している対象が印より後に動いたか**で決める。
 
 ```sh
-git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECISIONS.md skills home/.pi/agent/agents home/.pi/agent/skills
+git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECISIONS.md home/.agents home/.pi/agent/agents
 ```
 
 何も出なければ、印が古くても内容は正しい。出たら、その分だけ疑う。
@@ -35,12 +35,11 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 
 ## Structure and where to look
 
-この repo は `skills/`・`home/`・`dot`・`install.sh`・`packages/`・`tests/`・`DECISIONS.md` で構成する。
+この repo は `home/.agents/skills/`・`home/`・`dot`・`install.sh`・`packages/`・`tests/`・`DECISIONS.md` で構成する。
 
 | Task | Canonical source / entry |
 | --- | --- |
-| 共有skillを追加・変更 | `skills/<name>/SKILL.md`。配信契約は `install.sh` |
-| Piだけが読むskillを追加・変更 | `home/.pi/agent/skills/<name>/`。consumerを増やすまで共有正本へ移さない |
+| skillを追加・変更 | `home/.agents/skills/<name>/SKILL.md`。Stow配信契約は `install.sh` |
 | Pi extension / MCP安全設定 | `home/.pi/agent/extensions/` / `home/.pi/agent/mcp.json` |
 | マシン設定を変更 | `home/`。配置は `install.sh` と `stow` |
 | 導入・更新・診断を変更 | `dot` / `install.sh` |
@@ -50,8 +49,8 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 
 ## Conventions
 
-- `install.sh` は `skills/*/` を `~/.agents/skills` 経由で正本化し、存在する `~/.pi/agent/skills` へ配る。
-  既存配下が実体なら止める。Herdr同梱skillだけは、repo版とdescription以外が一致するときにrepo管理へ移す。
+- skill の唯一の正本は `home/.agents/skills/`。`install.sh` は `home/` をStowして `~/.agents/skills/` へ置く。
+  Pi はglobal discoveryで読むため、`~/.pi/agent/skills/` へは配らない。既存配下が実体なら止める。Herdr同梱skillだけは、repo版とdescription以外が一致するときにrepo管理へ移す。
   `install.sh:12-18`, `install.sh:58-105`
 - `home/` は `stow --no-folding` を前提に張る。
   `stow` 無しでは `home/.config/herdr/config.toml` を張らない。`install.sh:80-113`, `tests/install.sh:124-140`
@@ -62,13 +61,13 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 - Supabase prod は `SUPABASE_ENV=dev|prod` と `supabase db push` を確認経路で扱う。
   `home/.pi/agent/extensions/supabase-prod-confirm.ts:2-5`, `tests/supabase-prod-confirm.sh:14-17`
 - sub-agentは同一Herdr workspaceの新規tabで起動する。pane splitは人が明示した場合だけにし、短命tabは結果確認後に作成者が閉じる。blocked・timeout・failedはtabを残す。
-  レビューは `skills/code-review/SKILL.md` で規約・仕様を独立したparallel sub-agentsへ渡す。
-  smell baselineはskill本文に持つ。TypeScript／Effectの設計規律は`skills/coding-standards/SKILL.md`に置く。
-  原因不明のbugは`skills/diagnosing-bugs/SKILL.md`でred-capable loopを先に作る。codeの追加・renameでは
-  `skills/write-discoverable-code/SKILL.md`のplain-text search規律を適用する。
-  調査は`skills/research/SKILL.md`からHerdrのbackground tabへ渡す。grillingのfact調査は依存するfrontierだけを止める。
-  skillの発火・router規律は`skills/writing-for-agents/SKILL-MECHANICS.md`に置く。
-- worktree は `skills/worktrees/SKILL.md` をモデルからも呼べる。作成と Herdr tab 起動は別操作。
+  レビューは `home/.agents/skills/code-review/SKILL.md` で規約・仕様を独立したparallel sub-agentsへ渡す。
+  smell baselineはskill本文に持つ。TypeScript／Effectの設計規律は`home/.agents/skills/coding-standards/SKILL.md`に置く。
+  原因不明のbugは`home/.agents/skills/diagnosing-bugs/SKILL.md`でred-capable loopを先に作る。codeの追加・renameでは
+  `home/.agents/skills/write-discoverable-code/SKILL.md`のplain-text search規律を適用する。
+  調査は`home/.agents/skills/research/SKILL.md`からHerdrのbackground tabへ渡す。grillingのfact調査は依存するfrontierだけを止める。
+  skillの発火・router規律は`home/.agents/skills/writing-for-agents/SKILL-MECHANICS.md`に置く。
+- worktree は `home/.agents/skills/worktrees/SKILL.md` をモデルからも呼べる。作成と Herdr tab 起動は別操作。
 - `dot init/update` は依存導入・ネットワーク・HOME変更を伴う。Pi packageは`packages/pi-packages.txt`から導入する。検査は`tests/bootstrap.sh`の偽コマンドと一時HOMEを使う。
 
 ## Boundaries and anti-patterns
@@ -85,7 +84,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 
 ## Dependencies
 
-- 環境変数: `AGENTS_SKILLS_DIR`, `PI_SKILLS_DIR`, `STOW_TARGET`（`install.sh:9-15`）
+- 環境変数: `STOW_TARGET`（`install.sh:5-6`）
 - 環境変数: `HERDR_DOCTOR_CONFIG`, `HERDR_BIN`, `PI_AGENT_DEFINITIONS_DIR`（`tests/doctor.sh:29-34`, `tests/doctor.sh:131-160`）
 - 環境変数: `SUPABASE_ENV`（`home/.pi/agent/extensions/supabase-prod-confirm.ts:18-23`）
 - 依存ツール: `git`, `stow`, `herdr`, `pi`, `node`, `python3`, `jq`。導入一覧は`packages/`、入口は`dot`。
