@@ -198,8 +198,8 @@ if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then
 	fi
 fi
 
-# 退役したJev routerの配信リンクだけを撤去する。別管理の実体・リンクには触れない。
-for retired_pi_file in codex-jev-router.json extensions/codex-jev-router.ts; do
+# 退役したPi extensionの配信リンクだけを撤去する。別管理の実体・リンクには触れない。
+for retired_pi_file in codex-jev-router.json extensions/codex-jev-router.ts extensions/workflow-command.ts; do
 	legacy="$stow_target/.pi/agent/$retired_pi_file"
 	if [ "$blocked" -eq 0 ] && [ -L "$legacy" ]; then
 		target=$(readlink "$legacy")
@@ -210,7 +210,7 @@ for retired_pi_file in codex-jev-router.json extensions/codex-jev-router.ts; do
 		resolved="$(cd -P "$(dirname "$candidate")" 2>/dev/null && pwd)/$(basename "$candidate")" || resolved=""
 		if [ "$resolved" = "$repo/home/.pi/agent/$retired_pi_file" ]; then
 			rm "$legacy"
-			printf 'REMOVE 旧Jev router %s\n' "$retired_pi_file"
+			printf 'REMOVE 退役Pi extension %s\n' "$retired_pi_file"
 		fi
 	fi
 done

@@ -280,13 +280,13 @@ case_retired_review_link() {
 case_retired_jev_router_links() {
 	local d="$tmp/retired-jev-router" name dest foreign="$tmp/foreign-jev-router"
 	mkdir -p "$d/agents" "$d/pi" "$d/home/.pi/agent/extensions"
-	for name in codex-jev-router.json extensions/codex-jev-router.ts; do
+	for name in codex-jev-router.json extensions/codex-jev-router.ts extensions/workflow-command.ts; do
 		dest="$d/home/.pi/agent/$name"
 		ln -s "$repo/home/.pi/agent/$name" "$dest"
 	done
 	run_install "$d" bash >/dev/null
-	for name in codex-jev-router.json extensions/codex-jev-router.ts; do
-		[ ! -L "$d/home/.pi/agent/$name" ] || fail "旧Jev router $name の配信リンクが残った"
+	for name in codex-jev-router.json extensions/codex-jev-router.ts extensions/workflow-command.ts; do
+		[ ! -L "$d/home/.pi/agent/$name" ] || fail "退役Pi extension $name の配信リンクが残った"
 	done
 	printf 'keep\n' >"$foreign"
 	ln -s "$foreign" "$d/home/.pi/agent/codex-jev-router.json"
