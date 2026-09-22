@@ -35,7 +35,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 
 ## Structure and where to look
 
-この repo は `skills/`・`home/`・`workflow/`・`dot`・`install.sh`・`packages/`・`tests/`・`DECISIONS.md` で構成する。
+この repo は `skills/`・`home/`・`dot`・`install.sh`・`packages/`・`tests/`・`DECISIONS.md` で構成する。
 
 | Task | Canonical source / entry |
 | --- | --- |
@@ -46,7 +46,6 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 | 導入・更新・診断を変更 | `dot` / `install.sh` |
 | package定義を変更 | `packages/` |
 | 検査を追加・変更 | `tests/`。一時HOME・tmpで隔離できるか確認 |
-| Development Workflow Coordinator を変更 | `workflow/`。run artifact は repo 外の state directory に置く。validatorは固定profileだけを実行し、agent runnerはHerdr/Piを固定role・tool allowlistで呼ぶ薄いadapterに保つ。M4のready-for-humanはPASS validationとclean independent reviewの両方を要する |
 | 方針・選択理由を変更 | `DECISIONS.md` |
 
 ## Conventions

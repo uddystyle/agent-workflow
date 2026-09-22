@@ -15,7 +15,6 @@ Herdr の pane で Pi を立ち上げ、Codex と必要な拡張を選んで使�
 | `home/.pi/agent/keybindings.json` | Pi標準selectorの追加keybinding |
 | `home/.pi/agent/mcp.json` | PiのMCP安全設定（管理対象serverなし） |
 | `packages/pi-packages.txt` | 全環境へ導入するPi package |
-| `workflow/` | Development Workflow Coordinator の deterministic CLI・schemas・profiles |
 
 スキルは `~/.agents/skills/` を正本に置き、現在の consumer である Pi へ配る。
 consumer を増やすときは、正本からの配り先を1行足す。
@@ -101,8 +100,6 @@ done
 ./tests/doctor.sh        # 現場が想定どおりか
 ./tests/doctor-integration.sh # doctor の隔離検査
 ./tests/worktrees.sh          # canonical worktree helper を隔離して確かめる
-./tests/workflow-core.sh       # Coordinator M1 の run contract・lock・state遷移を隔離して確かめる
-./tests/workflow-validator.sh  # Coordinator M2 の fixed profile・process結果・安全artifactを隔離して確かめる
 ```
 
 前者は一時ディレクトリだけを使い、`install.sh` の受入条件を確認する。
@@ -138,29 +135,6 @@ model-invoked／manual-onlyとrouterの規律は`skills/writing-for-agents/SKILL
 
 `/parallel-review` は退役した。旧配信リンクは `install.sh` が所有元を確認して撤去する。
 
-### Development Workflow Coordinator（M1–M4）
-
-`workflow/coordinator create-run` は、worktree を作らず、run contract だけを repo 外の
-`$XDG_STATE_HOME/agent-workflow/workflow-runs/`（未設定なら`~/.local/state/...`）へ作る。
-manifest は immutable、state は許可された lifecycle transition だけを受け、writer lock は同じ worktree の
-並列 writer を拒否する。
-
-M2 の `validate` は固定 `repository-tests` profile だけを実行する。PASS は exit code 0、timeoutなし、
-cancellationなし、truncationなし、artifact sanitizer成功のすべてを満たす場合だけである。stdout/stderr/diff は
-一時領域で走査してから publish し、走査不能または秘密検出時は artifact を残さず fail closed にする。
-
-M3 の `run-agent` は Herdr の新規 sibling pane に、fresh Pi session を role ごとに1つ起動する薄いadapterである。
-Implementer/Fixer は `read,write,edit,grep,find,ls`、Reviewer は `read,grep,find,ls` の固定 allowlistだけを
-Piの `--tools` へ渡す。Pi session全体やterminal transcriptは保存せず、sanitized final assistant responseだけを
-artifact化する。通常testはfake Herdrだけを使う。M4 の `run` は Implement → Validate → Review → Fix → Validate → fresh re-review を最大 `max_fix_attempts` 回に制限して接続する。`ready-for-human` は最新validationがPASSかつ最新独立reviewがno findingsの場合だけに到達する。final reportを作るが、commit、merge、push、deploy、production mutationは行わない。
-
-```sh
-workflow/coordinator create-run \
-  --repository-root <canonical-root> --worktree-path <linked-worktree> \
-  --branch <branch> --base-sha <sha> --milestone-file <milestone.md>
-workflow/coordinator validate --run-dir <run-dir> --attempt 0
-workflow/coordinator run-agent --run-dir <run-dir> --role reviewer --attempt 0
-```
 
 
 `two-axis-review` は旧名の入口だけを残し、手順は `code-review` に一本化する。
