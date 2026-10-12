@@ -9,6 +9,12 @@ blocked=0
 linked=0
 skipped=0
 
+# GitのignoreだけではStow配信を防げない。Herdrのmachine固有runtime stateを除外する。
+stow_runtime_ignores=(
+	'--ignore=^\.config/herdr/session-snapshots$'
+	'--ignore=^\.config/herdr/[^/]*\.sock(\..*)?$'
+)
+
 # 存在しない旧sourceも比較できる、symlinkの字面上の絶対pathを返す。
 link_path() {
 	local link=$1 target candidate
@@ -27,6 +33,39 @@ link_points_to() {
 	expected=$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$want")
 	[ "$actual" = "$expected" ]
 }
+
+# 削除済みskillの配信linkを、sourceが消えた後も所有元のpathで判定して撤去する。
+retired_skills=(code-review coding-standards domain-modeling grill-me grill-with-docs grilling prototype research tdd cloudflare-composition-root two-axis-review)
+remove_retired_skill_links() {
+	local dest=$1 name=$2 link actual
+	if [ -L "$dest" ]; then
+		if link_points_to "$dest" "$repo/home/.agents/skills/$name" || \
+			link_points_to "$dest" "$repo/home/.pi/agent/skills/$name" || \
+			link_points_to "$dest" "$repo/skills/$name" || \
+			{ [ "$dest" = "$stow_target/.pi/agent/skills/$name" ] && link_points_to "$dest" "$stow_target/.agents/skills/$name"; }; then
+			rm "$dest"
+			printf 'REMOVE 退役skill link %s\n' "$dest"
+		fi
+		return 0
+	fi
+	[ -d "$dest" ] || return 0
+	while IFS= read -r link; do
+		actual=$(link_path "$link")
+		case "$actual" in
+		"$repo/home/.agents/skills/$name/"* | "$repo/home/.pi/agent/skills/$name/"* | "$repo/skills/$name/"*)
+			rm "$link"
+			printf 'REMOVE 退役skill file link %s\n' "$link"
+			;;
+		esac
+	done < <(find "$dest" -type l)
+	# 同居する実体・別管理linkがあれば残し、空になったdirectoryだけを消す。
+	find "$dest" -depth -type d -exec rmdir {} \; 2>/dev/null || true
+}
+for name in "${retired_skills[@]}"; do
+	# globalを撤去する前に、そのPi consumer linkを処理する。
+	remove_retired_skill_links "$stow_target/.pi/agent/skills/$name" "$name"
+	remove_retired_skill_links "$stow_target/.agents/skills/$name" "$name"
+done
 
 # 旧 root skills/ を指すglobal linkと、そのPi consumer linkだけを退役する。
 legacy_global_names=()
@@ -54,25 +93,6 @@ for name in "${legacy_global_names[@]:-}"; do
 	if link_points_to "$global" "$repo/skills/$name"; then
 		rm "$global"
 		printf 'REMOVE 旧global skill link %s\n' "$name"
-	fi
-done
-
-# Pi専用だったskillのStow file linkだけを退役する。実体・別管理linkには触れない。
-for name in domain-modeling grill-with-docs grilling prototype tdd; do
-	legacy_dir="$stow_target/.pi/agent/skills/$name"
-	removed=no
-	while IFS= read -r source; do
-		rel=${source#"$repo/home/.agents/skills/$name/"}
-		legacy="$legacy_dir/$rel"
-		old_source="$repo/home/.pi/agent/skills/$name/$rel"
-		if link_points_to "$legacy" "$old_source"; then
-			rm "$legacy"
-			removed=yes
-		fi
-	done < <(find "$repo/home/.agents/skills/$name" -type f)
-	if [ "$removed" = yes ]; then
-		find "$legacy_dir" -depth -type d -exec rmdir {} \; 2>/dev/null || true
-		printf 'REMOVE 旧Pi-only skill %s\n' "$name"
 	fi
 done
 
@@ -119,6 +139,10 @@ else
 	owned_links=()
 	while IFS= read -r source; do
 		rel=${source#"$repo/home/"}
+		# runtime stateを指す既存linkも、設定linkの正規化対象にしない。
+		case "$rel" in
+		.config/herdr/session-snapshots/* | .config/herdr/*.sock | .config/herdr/*.sock.*) continue ;;
+		esac
 		dest="$stow_target/$rel"
 		if [ -L "$dest" ] && [ "$(readlink "$dest")" = "$source" ]; then
 			rm "$dest"
@@ -126,7 +150,7 @@ else
 		fi
 	done < <(find "$repo/home" -type f)
 
-	plan=$(stow -n -v 2 --no-folding -d "$repo" -t "$stow_target" home 2>&1 || true)
+	plan=$(stow -n -v 2 --no-folding "${stow_runtime_ignores[@]}" -d "$repo" -t "$stow_target" home 2>&1 || true)
 	if [[ $plan == *"would cause conflicts"* ]]; then
 		for entry in "${owned_links[@]}"; do
 			ln -s "${entry#*:}" "${entry%%:*}"
@@ -137,7 +161,7 @@ else
 	*) pending=no ;;
 	esac
 
-	if stow --no-folding -d "$repo" -t "$stow_target" home; then
+	if stow --no-folding "${stow_runtime_ignores[@]}" -d "$repo" -t "$stow_target" home; then
 		if [ "$pending" = yes ]; then
 			printf 'STOW home -> %s\n' "$stow_target"
 			linked=$((linked + 1))

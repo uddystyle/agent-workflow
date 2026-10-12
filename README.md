@@ -92,7 +92,7 @@ done
 
 ```sh
 ./tests/bootstrap.sh     # dot の導入・更新・衝突保護を偽の依存で検査
-./tests/review-workflow.sh # review skill・観点定義・移行境界
+bash ./tests/skills.sh   # 残すskillの契約・退役境界
 ./tests/install.sh       # 道具が正しいか
 ./tests/secret-scan.sh   # Pi のガードレールが止めるべきものを止めるか
 ./tests/supabase-prod-confirm.sh # prod migration の確認 UI 条件
@@ -113,30 +113,20 @@ Herdr の pane で対象の repo を開き、`pi` を起動する。
 
 ```
 /skill:agents-md       この repo の AGENTS.md を作り直す
-/skill:code-review     起点を指定して規約・仕様を独立したparallel sub-agentsで見る
-/skill:research        調査をHerdrのbackground tabへ渡す
 /skill:worktrees       canonical root に worktree を作成・再利用する
-/skill:tdd             合意したseamでred-greenを始める
 /skill:plannotator-tui 文書を人のレビューへ渡す
 ```
 
-`code-review`、`tdd`、`plannotator-tui`は手動で呼ぶ。`implement`の一括入口は置かず、必要な段を個別に選ぶ。
+`handoff`、`plannotator-tui`は手動で呼ぶ。検査・実装・レビューは、その作業を直接依頼する。
 原因不明のbugやperformance regressionでは`diagnosing-bugs`が再現loopから診断し、codeの追加・変更・renameでは
 `write-discoverable-code`がplain-text searchで辿れる名前・型・literal・配置を補う。
-TypeScript／Effectの変更では`coding-standards`が型・境界・回復・lintの規律を補う。
-
-レビューは手動で呼び、StandardsとSpecを独立したparallel sub-agentsへ渡す。sub-agentは同一workspaceの新規tabで起動し、pane splitは人が明示した場合だけにする。
-規約がskill本文のsmell baselineより優先し、仕様なしは未評価として報告する。親の会話上の依頼と差分snapshotを子へ渡す。
-researchもbackground tabへ渡し、環境変数で再帰委譲を止める。短命tabは成果物を確認してから作成者が閉じ、blocked・timeout・failedは残す。
-grillingは環境の事実をfact sub-agentへ渡し、依存するfrontierだけを待たせる。
+sub-agentが必要なときは同一workspaceの新規tabで起動し、pane splitは人が明示した場合だけにする。
+短命tabは成果物を確認してから作成者が閉じ、blocked・timeout・failedは残す。
 worktreesはモデルからも呼べる。既存cloneの変換や未保存変更の破棄は確認を通す。
 model-invoked／manual-onlyとrouterの規律は`home/.agents/skills/writing-for-agents/SKILL-MECHANICS.md`に置く。
 
 `/parallel-review` は退役した。旧配信リンクは `install.sh` が所有元を確認して撤去する。
 
-
-
-`two-axis-review` は旧名の入口だけを残し、手順は `code-review` に一本化する。
 
 ## 出自
 

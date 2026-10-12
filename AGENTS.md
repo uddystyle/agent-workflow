@@ -61,12 +61,10 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 - Supabase prod は `SUPABASE_ENV=dev|prod` と `supabase db push` を確認経路で扱う。
   `home/.pi/agent/extensions/supabase-prod-confirm.ts:2-5`, `tests/supabase-prod-confirm.sh:14-17`
 - sub-agentは同一Herdr workspaceの新規tabで起動する。pane splitは人が明示した場合だけにし、短命tabは結果確認後に作成者が閉じる。blocked・timeout・failedはtabを残す。
-  レビューは `home/.agents/skills/code-review/SKILL.md` で規約・仕様を独立したparallel sub-agentsへ渡す。
-  smell baselineはskill本文に持つ。TypeScript／Effectの設計規律は`home/.agents/skills/coding-standards/SKILL.md`に置く。
   原因不明のbugは`home/.agents/skills/diagnosing-bugs/SKILL.md`でred-capable loopを先に作る。codeの追加・renameでは
   `home/.agents/skills/write-discoverable-code/SKILL.md`のplain-text search規律を適用する。
-  調査は`home/.agents/skills/research/SKILL.md`からHerdrのbackground tabへ渡す。grillingのfact調査は依存するfrontierだけを止める。
   skillの発火・router規律は`home/.agents/skills/writing-for-agents/SKILL-MECHANICS.md`に置く。
+- 参考先で削除されたskillは復元しない。退役済みskillのrepo所有linkは`install.sh`で撤去し、実体・別管理linkは残す。`DECISIONS.md` D-33
 - worktree は `home/.agents/skills/worktrees/SKILL.md` をモデルからも呼べる。作成と Herdr tab 起動は別操作。
 - `dot init/update` は依存導入・ネットワーク・HOME変更を伴う。Pi packageは`packages/pi-packages.txt`から導入する。検査は`tests/bootstrap.sh`の偽コマンドと一時HOMEを使う。
 

@@ -328,7 +328,7 @@ pi auth check --provider <名前>     # ready / not_ready
 
 ## D-17 読む観点は独立したcontextへ渡す
 
-**現行判断（参考先へ合わせる依頼による更新）**: `code-review`は手動で呼び、Standards / Specを独立した
+**過去の判断（skillの退役はD-33）**: `code-review`は手動で呼び、Standards / Specを独立した
 parallel sub-agentsへ渡す。skillは差分、仕様、規約、smell baseline、各promptを持つが、agentの種類や
 配置は起動する道具の規則に委ねる。仕様がなければSpecは起動せず、未評価と報告する。専用のPi agent定義は持たない。
 
@@ -338,7 +338,7 @@ researchはHerdrのbackground paneへ渡す。`RESEARCH_SUBAGENT=1`をpane作成
 
 ### 過去の判断と実測（履歴。現在の課金・探索仕様の説明ではない）
 
-以下は当時の選択理由を残す記録である。現行手順は上記と `home/.agents/skills/code-review/SKILL.md` を使う。
+以下は当時の選択理由を残す記録である。削除済みskillの手順は現在の実行契約ではない（D-33）。
 
 pi から子プロセスへ委譲できるようにする。最初は**調査とレビューの観点だけ**、
 **読むだけの道具**で。
@@ -624,6 +624,8 @@ auto auth、script modeを無効のまま保つ。
 
 ## D-25 手動入口は、人が段を選ぶ場所だけに置く
 
+**履歴**: 以下のskill構成はD-33で更新した。削除済みskillへの参照は当時の選択理由として残す。
+
 参考先の`d0b8183`に合わせ、`code-review`、`tdd`、`plannotator-tui`はmanual-onlyとし、`writing-for-agents`は
 対象文書から自動発火できるままにする。複数段を一括実行する`implement`は廃止し、検査・実装・レビュー・commitを
 必要な場面で個別に選ぶ。`domain-modeling`は`CONTEXT.md`の用語だけを扱い、判断文書の置き場を兼ねない。
@@ -635,6 +637,8 @@ public inference、lintの証明範囲は`coding-standards`へ置く。public ex
 書き直した。`cua-driver`はdesktop全体への権限と具体的用途が釣り合わないため、この更新でも導入しない。
 
 ## D-26 調査待ちは依存するfrontierだけを止める
+
+**履歴**: `grilling`はD-33で退役した。以下は当時の手順である。skill発火の規律は残す。
 
 `grilling`で環境の事実が必要ならfact sub-agentへ渡し、その事実に依存する問いだけを未解決にする。
 独立したfrontierは同じラウンドで進め、結果が戻ったら根拠を確認してtreeを再計算する。配車と回収の具体は
@@ -684,7 +688,7 @@ shellやPiからHerdr paneを移るときは`prefix+h/j/k/l`を使う。Herdr側
 原因不明のbugとperformance regressionには`diagnosing-bugs`を使い、実行済みでred-capableなfeedback loopを仮説より先に作る。
 codeの追加・変更・renameには`write-discoverable-code`を使い、plain-text searchでdefinition、constraint、literal、testへ辿れる
 名前と配置を選ぶ。前者は通常実装とは異なる診断workflow、後者は言語固有の設計規律より前に効く横断的な探索規律なので、
-`coding-standards`へ埋めずmodel-invoked skillとして分ける。
+独立したmodel-invoked skillとして分ける（当時の比較先`coding-standards`はD-33で退役）。
 
 参考先は`dmmulroy/.dotfiles` commit `fcdf060`。正本はそれぞれ`mattpocock/skills` commit `3216582`と
 `modem-dev/skills` commit `edcdedb`で、両方のMIT LICENSEとsource commit、upstream SHA-256をskillの隣へ置く。
@@ -705,3 +709,14 @@ sub-agentは同一Herdr workspaceの新規tabで起動する。pane splitは人�
 
 parentが中断した場合もcleanupを試みない。blocked、timeout、stalled、失敗、または結果未確認のtabは残し、IDと観測状態を人へ報告する。
 server、watcher、人が残すよう依頼したtaskはpersistentであり、自動回収しない。
+
+## D-33 参考先の削除済みskillを退役する
+
+人の依頼により、`code-review`、`coding-standards`、`domain-modeling`、`grill-with-docs`、`grilling`、
+`prototype`、`research`、`tdd`を削除する。`code-review`だけを指す旧名`two-axis-review`も撤去する。
+参考先の`grill-me`と`cloudflare-composition-root`は未導入のままにする。
+
+削除した規律を別のskillやAGENTSへ移し替えず、通常の実装・レビュー・調査は直接依頼する。
+残すskillと秘密保護・本番確認・Herdrの操作境界は維持する。これは構成を減らす選択であり、品質向上を実測した判断ではない。
+`install.sh`はsourceが消えた後もrepo所有の配信linkを撤去し、同居する実体・別管理linkは保存する。
+以前の判断に出てくる削除済みskill名は履歴であり、復元や呼び出しの指示として扱わない。
