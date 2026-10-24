@@ -58,8 +58,6 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 - 外部MCP serverは管理せず、host設定探索・sampling・elicitation・auto auth・script modeを止める。browser診断はBashから始める。`home/.pi/agent/mcp.json`, `tests/doctor.sh`, `DECISIONS.md`
 - `secret-scan` は `write`/`edit`/`bash` を走査し、拒否時は `denied`。
   `home/.pi/agent/extensions/secret-scan.ts:1-50`, `tests/secret-scan.sh:16-31`
-- Supabase prod は `SUPABASE_ENV=dev|prod` と `supabase db push` を確認経路で扱う。
-  `home/.pi/agent/extensions/supabase-prod-confirm.ts:2-5`, `tests/supabase-prod-confirm.sh:14-17`
 - sub-agentは同一Herdr workspaceの新規tabで起動する。pane splitは人が明示した場合だけにし、短命tabは結果確認後に作成者が閉じる。blocked・timeout・failedはtabを残す。
   原因不明のbugは`home/.agents/skills/diagnosing-bugs/SKILL.md`でred-capable loopを先に作る。codeの追加・renameでは
   `home/.agents/skills/write-discoverable-code/SKILL.md`のplain-text search規律を適用する。
@@ -84,7 +82,6 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 
 - 環境変数: `STOW_TARGET`（`install.sh:5-6`）
 - 環境変数: `HERDR_DOCTOR_CONFIG`, `HERDR_BIN`, `PI_AGENT_DEFINITIONS_DIR`（`tests/doctor.sh:29-34`, `tests/doctor.sh:131-160`）
-- 環境変数: `SUPABASE_ENV`（`home/.pi/agent/extensions/supabase-prod-confirm.ts:18-23`）
 - 依存ツール: `git`, `stow`, `herdr`, `pi`, `node`, `python3`, `jq`。導入一覧は`packages/`、入口は`dot`。
 
 ## Notes

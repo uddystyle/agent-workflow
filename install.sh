@@ -35,7 +35,7 @@ link_points_to() {
 }
 
 # 削除済みskillの配信linkを、sourceが消えた後も所有元のpathで判定して撤去する。
-retired_skills=(code-review coding-standards domain-modeling grill-me grill-with-docs grilling prototype research tdd cloudflare-composition-root two-axis-review)
+retired_skills=(code-review coding-standards domain-modeling grill-me grill-with-docs grilling prototype research tdd cloudflare-composition-root two-axis-review supabase-migrations)
 remove_retired_skill_links() {
 	local dest=$1 name=$2 link actual
 	if [ -L "$dest" ]; then
@@ -190,7 +190,7 @@ done
 rmdir "$stow_target/.config/opencode/commands" 2>/dev/null || true
 
 remove_retired_link "$stow_target/.pi/agent/extensions/parallel-review.ts" "$repo/home/.pi/agent/extensions/parallel-review.ts" '旧 parallel-review の配信link'
-for retired_pi_file in codex-jev-router.json extensions/codex-jev-router.ts extensions/workflow-command.ts; do
+for retired_pi_file in codex-jev-router.json extensions/codex-jev-router.ts extensions/workflow-command.ts extensions/supabase-prod-confirm.ts; do
 	remove_retired_link "$stow_target/.pi/agent/$retired_pi_file" "$repo/home/.pi/agent/$retired_pi_file" "退役Pi extension $retired_pi_file"
 done
 for retired_agent in survey standards spec; do

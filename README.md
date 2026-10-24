@@ -95,7 +95,6 @@ done
 bash ./tests/skills.sh   # 残すskillの契約・退役境界
 ./tests/install.sh       # 道具が正しいか
 ./tests/secret-scan.sh   # Pi のガードレールが止めるべきものを止めるか
-./tests/supabase-prod-confirm.sh # prod migration の確認 UI 条件
 bash ./tests/herdr-opencode-lifecycle.sh # 導入済みV2連携へ模擬イベントを渡して状態と帰属を検査
 ./tests/doctor.sh        # 現場が想定どおりか
 ./tests/doctor-integration.sh # doctor の隔離検査
@@ -111,7 +110,6 @@ HerdrのOpenCode検査は導入済み連携コードと隔離socketを使い、�
 未導入ならskipする。画面操作・実際のイベント発行・schedulerの保証を含むE2Eではない。
 `HERDR_CHECK_CHILD_LIVENESS=1 bash tests/herdr-opencode-lifecycle.sh`は、親の完了後も子が動く場合に
 `working`を維持できるかを追加検査する。ここで失敗する連携では、親の`idle`／`done`を子の完了根拠にしない。
-Piの自作確認UIは`herdr:blocked`の開始・解除を対にして通知する。Supabase承認は取消・例外時も解除する。
 
 ## 使い方
 

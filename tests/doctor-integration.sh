@@ -125,10 +125,8 @@ git -C "$canonical" worktree add "$canonical/a-topic" HEAD >/dev/null 2>&1
 # main より辞書順で先に現れる topic worktree 上で、作業中の doctor を実行する。
 cp "$repo/tests/doctor.sh" "$canonical/a-topic/tests/doctor.sh"
 cp "$repo/install.sh" "$canonical/main/install.sh"
-rm -rf "$canonical/main/home/.agents"
-cp -R "$repo/home/.agents" "$canonical/main/home/.agents"
-cp "$repo/home/.config/herdr/config.toml" "$canonical/main/home/.config/herdr/config.toml"
-cp "$repo/home/.pi/agent/mcp.json" "$canonical/main/home/.pi/agent/mcp.json"
+rm -rf "$canonical/main/home"
+cp -R "$repo/home" "$canonical/main/home"
 mkdir -p "$canonical_home"
 env HOME="$canonical_home" "$canonical/main/install.sh" >/dev/null
 
@@ -151,10 +149,8 @@ git -C "$fallback_canonical" worktree add "$fallback_canonical/z-topic" HEAD >/d
 [ ! -e "$fallback_canonical/main" ] || fail 'fallback 用 canonical root に main がある'
 cp "$repo/tests/doctor.sh" "$fallback_canonical/z-topic/tests/doctor.sh"
 cp "$repo/install.sh" "$fallback_canonical/a-fallback/install.sh"
-rm -rf "$fallback_canonical/a-fallback/home/.agents"
-cp -R "$repo/home/.agents" "$fallback_canonical/a-fallback/home/.agents"
-cp "$repo/home/.config/herdr/config.toml" "$fallback_canonical/a-fallback/home/.config/herdr/config.toml"
-cp "$repo/home/.pi/agent/mcp.json" "$fallback_canonical/a-fallback/home/.pi/agent/mcp.json"
+rm -rf "$fallback_canonical/a-fallback/home"
+cp -R "$repo/home" "$fallback_canonical/a-fallback/home"
 mkdir -p "$fallback_home"
 env HOME="$fallback_home" "$fallback_canonical/a-fallback/install.sh" >/dev/null
 

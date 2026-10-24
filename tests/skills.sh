@@ -9,7 +9,7 @@ r = Path(os.environ['REPO'])
 def text(p): return (r / p).read_text()
 retired = ['code-review', 'coding-standards', 'domain-modeling', 'grill-me',
            'grill-with-docs', 'grilling', 'prototype', 'research', 'tdd',
-           'cloudflare-composition-root', 'two-axis-review']
+           'cloudflare-composition-root', 'two-axis-review', 'supabase-migrations']
 for name in retired:
     assert not (r / 'home/.agents/skills' / name).exists(), name
     for doc in ['AGENTS.md', 'README.md']:
@@ -51,7 +51,8 @@ assert 'edcdedb38a545f67c065f4084b3627517f0d79cf' in text('home/.agents/skills/w
 assert 'MIT License' in text('home/.agents/skills/write-discoverable-code/LICENSE')
 for p in ['home/.pi/agent/skills/implement/SKILL.md', 'home/.agents/skills/cua-driver',
           'home/.agents/skills/computer-use-mcp', 'home/.pi/agent/extensions/parallel-review.ts',
-          'home/.pi/agent/agents/standards.md', 'home/.pi/agent/agents/spec.md']:
+           'home/.pi/agent/extensions/supabase-prod-confirm.ts',
+           'home/.pi/agent/agents/standards.md', 'home/.pi/agent/agents/spec.md']:
     assert not (r / p).exists(), p
 for p in (r / 'home/.agents/skills').glob('*/SKILL.md'):
     if p.parent.name != 'herdr':

@@ -726,3 +726,8 @@ server、watcher、人が残すよう依頼したtaskはpersistentであり、�
 残すskillと秘密保護・本番確認・Herdrの操作境界は維持する。これは構成を減らす選択であり、品質向上を実測した判断ではない。
 `install.sh`はsourceが消えた後もrepo所有の配信linkを撤去し、同居する実体・別管理linkは保存する。
 以前の判断に出てくる削除済みskill名は履歴であり、復元や呼び出しの指示として扱わない。
+
+## D-34 Supabase専用連携を撤去する
+
+人の依頼により、Supabase専用のPi確認拡張とmigration skillを削除する。repo所有の配信linkは`install.sh`で撤去し、実体・別管理linkは残す。
+Supabaseの実行にこのrepo独自の環境記録・dry-run判定・確認UIは介在しない。秘密スキャンのSupabaseキー検出は維持する。

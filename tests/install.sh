@@ -59,7 +59,7 @@ case_legacy_shared_skill_migration() {
 
 case_retired_skill_links() {
 	local d="$tmp/retired-skills" name global pi nested foreign
-	for name in code-review coding-standards domain-modeling grill-with-docs grilling prototype research tdd two-axis-review; do
+	for name in code-review coding-standards domain-modeling grill-with-docs grilling prototype research tdd two-axis-review supabase-migrations; do
 		global="$d/home/.agents/skills/$name"
 		pi="$d/home/.pi/agent/skills/$name"
 		mkdir -p "$global" "$(dirname "$pi")"
@@ -80,7 +80,7 @@ PY
 	ln -s "$repo/skills/grill-me" "$d/home/.agents/skills/grill-me"
 	ln -s "$repo/home/.agents/skills/cloudflare-composition-root" "$d/home/.agents/skills/cloudflare-composition-root"
 	run_install "$d" bash >/dev/null
-	for name in code-review coding-standards domain-modeling grill-me grill-with-docs grilling prototype research tdd cloudflare-composition-root two-axis-review; do
+	for name in code-review coding-standards domain-modeling grill-me grill-with-docs grilling prototype research tdd cloudflare-composition-root two-axis-review supabase-migrations; do
 		for global in "$d/home/.agents/skills/$name" "$d/home/.pi/agent/skills/$name"; do
 			[ ! -e "$global" ] && [ ! -L "$global" ] || fail "退役skillが残った: $global"
 		done
@@ -158,16 +158,20 @@ case_retired_links() {
 	mkdir -p "$d/home/.pi/agent/extensions" "$d/home/.config/opencode/commands"
 	for dest in \
 		"$d/home/.pi/agent/extensions/parallel-review.ts:$repo/home/.pi/agent/extensions/parallel-review.ts" \
+		"$d/home/.pi/agent/extensions/supabase-prod-confirm.ts:$repo/home/.pi/agent/extensions/supabase-prod-confirm.ts" \
 		"$d/home/.config/opencode/commands/annotate-last.md:$repo/home/.config/opencode/commands/annotate-last.md"; do
 		ln -s "${dest#*:}" "${dest%%:*}"
 	done
 	run_install "$d" bash >/dev/null
 	[ ! -L "$d/home/.pi/agent/extensions/parallel-review.ts" ] || fail '旧extension linkが残った'
+	[ ! -L "$d/home/.pi/agent/extensions/supabase-prod-confirm.ts" ] || fail 'Supabase extension linkが残った'
 	[ ! -L "$d/home/.config/opencode/commands/annotate-last.md" ] || fail '旧command linkが残った'
 	printf 'keep\n' >"$foreign"
 	ln -s "$foreign" "$d/home/.pi/agent/extensions/parallel-review.ts"
+	ln -s "$foreign" "$d/home/.pi/agent/extensions/supabase-prod-confirm.ts"
 	run_install "$d" bash >/dev/null
 	[ -L "$d/home/.pi/agent/extensions/parallel-review.ts" ] || fail 'foreign extension linkを消した'
+	[ "$(readlink "$d/home/.pi/agent/extensions/supabase-prod-confirm.ts")" = "$foreign" ] || fail '別管理のSupabase extension linkを消した'
 	passed=$((passed + 1))
 }
 
