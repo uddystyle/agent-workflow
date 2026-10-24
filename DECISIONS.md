@@ -710,6 +710,12 @@ sub-agentは同一Herdr workspaceの新規tabで起動する。pane splitは人�
 parentが中断した場合もcleanupを試みない。blocked、timeout、stalled、失敗、または結果未確認のtabは残し、IDと観測状態を人へ報告する。
 server、watcher、人が残すよう依頼したtaskはpersistentであり、自動回収しない。
 
+## D-32 Jevによる判断は手動起動・失敗時のみ試行する
+
+`decision-assisted-implementation`を人が呼んだ場合に限り、Piが差分と関連チェックを確認した後、方針が割れた時だけJevへ外部送信を承認した要約を渡す。Jevは次の行動を提案し、検証や完了判定はPiと実行ツールが担う。
+
+**理由**: D-7の常時配車・台帳を復活させず、前回のJevフローが機能しなかった原因を小さく検証できる。通常の直接実装は変えない。成功率・費用・待ち時間が改善した実測が出るまで自動ルーティングへ広げない。
+
 ## D-33 参考先の削除済みskillを退役する
 
 人の依頼により、`code-review`、`coding-standards`、`domain-modeling`、`grill-with-docs`、`grilling`、

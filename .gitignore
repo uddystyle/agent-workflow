@@ -34,4 +34,9 @@ home/.pi/agent/extensions/**/node_modules/
 home/.pi/agent/extensions/pi-cloak/
 home/.pi/agent/extensions/save-md/
 
+# Herdr runtime state
+home/.config/herdr/session-snapshots/
+home/.config/herdr/*.sock
+home/.config/herdr/*.sock.*
+
 # 実験は commit するか消すかの二択にする。無視して溜めない。

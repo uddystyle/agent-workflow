@@ -20,7 +20,9 @@ let toolHandler;
 let resultHandler;
 let environmentCommand;
 const entries = [];
+const blockedEvents = [];
 extension.default({
+  events: { emit(name, data) { assert.equal(name, "herdr:blocked"); blockedEvents.push(data); } },
   on(name, callback) {
     if (name === "tool_call") toolHandler = callback;
     if (name === "tool_result") resultHandler = callback;
@@ -62,5 +64,31 @@ const denied = await toolHandler(
 );
 assert.equal(denied.block, true);
 assert.doesNotMatch(denied.reason, /dry-run/);
+assert.deepEqual(blockedEvents, [
+  { active: true, label: "本番 Supabase migration" },
+  { active: false },
+]);
+
+// The pending UI, not merely its final return value, must be reported as blocked.
+blockedEvents.length = 0;
+let reply;
+const pending = toolHandler(
+  { toolName: "bash", input: { command: "supabase db push" } },
+  { ui: { confirm: () => new Promise((resolve) => { reply = resolve; }) } },
+);
+assert.deepEqual(blockedEvents, [{ active: true, label: "本番 Supabase migration" }]);
+reply(true);
+assert.equal(await pending, undefined);
+assert.deepEqual(blockedEvents.at(-1), { active: false });
+
+blockedEvents.length = 0;
+await assert.rejects(toolHandler(
+  { toolName: "bash", input: { command: "supabase db push" } },
+  { ui: { confirm: async () => { throw new Error("confirmation UI closed"); } } },
+), /confirmation UI closed/);
+assert.deepEqual(blockedEvents, [
+  { active: true, label: "本番 Supabase migration" },
+  { active: false },
+]);
 console.log("PASS Supabase prod confirmation routing");
 NODE

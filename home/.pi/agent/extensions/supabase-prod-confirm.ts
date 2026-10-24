@@ -66,10 +66,17 @@ export default function (pi: any) {
 			return { block: true, reason: "本番 Supabase migration の前に supabase db push --dry-run を成功させる" };
 		}
 
-		const approved = await ctx.ui.confirm(
-			"本番 Supabase migration",
-			"Supabase: prod で db push を実行します。dry-run の結果を確認しましたか？",
-		);
+		// Pi の確認 UI 自体は Herdr の待機イベントを出さない。
+		pi.events.emit("herdr:blocked", { active: true, label: "本番 Supabase migration" });
+		let approved: boolean;
+		try {
+			approved = await ctx.ui.confirm(
+				"本番 Supabase migration",
+				"Supabase: prod で db push を実行します。dry-run の結果を確認しましたか？",
+			);
+		} finally {
+			pi.events.emit("herdr:blocked", { active: false });
+		}
 		if (!approved) {
 			return { block: true, reason: "本番 Supabase migration は承認されなかった" };
 		}
