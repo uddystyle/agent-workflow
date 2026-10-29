@@ -23,6 +23,8 @@ assert 'Start and coordinate an agent' in herdr
 assert 'Default to a new tab in the current workspace' in herdr
 assert 'herdr tab create' in herdr and 'herdr tab close' in herdr
 assert 'only when the user explicitly requests a split' in herdr
+assert 'Start short-lived work with `herdr_tabs_create`' in herdr
+assert 'not completed work' in herdr
 plannotator = text('home/.agents/skills/plannotator-tui/SKILL.md')
 assert 'name: plannotator-tui' in plannotator
 assert 'disable-model-invocation: true' in plannotator

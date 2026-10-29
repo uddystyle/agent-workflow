@@ -15,6 +15,7 @@ Herdr の pane で Pi を立ち上げ、Codex と必要な拡張を選んで使�
 | `home/.pi/agent/keybindings.json` | Pi標準selectorの追加keybinding |
 | `home/.pi/agent/mcp.json` | PiのMCP安全設定（管理対象serverなし） |
 | `packages/pi-packages.txt` | 全環境へ導入するPi package |
+| `packages/herdr-codemode.txt` | repo外へ取得するherdr-codemodeの固定commit |
 
 スキルの正本は `home/.agents/skills/` で、Stow後は `~/.agents/skills/` にある。Pi はこのglobal skill pathを直接読む。
 Herdr skillは同梱本文を保ち、別skillが明示的に要求した場合も使えるdescriptionだけをrepoで管理する。
@@ -65,7 +66,14 @@ Pi は npm のグローバル導入を前提にする。他の導入経路で同
 
 `home/` は `~` と同じ形の木にしておくだけでよい。設置の手続きは書かない——stow が形から決める。
 
-秘密スキャンは Pi extension として、`write`・`edit`・`bash` の書き出し直前に走る。
+秘密スキャンは Pi extension として、`write`・`edit`・`bash` の書き出し直前と、`herdr_*` がpaneへ文字を送る直前に走る。
+
+### herdr-codemode
+
+参考先のherdr-codemodeは、codemodeのscriptからHerdrを`tools.herdr_*`として呼べるようにする。
+license が無いので repo へは写さない。`./dot init/update` が `packages/herdr-codemode.txt` の固定commitを
+`~/.local/share/agent-workflow/herdr-codemode` へ取得し、`npm ci --ignore-scripts` の後で local Pi package として登録し、
+`defaultTools` に codemode を足す。commitを上げるときは参考先の差分を読んでから manifest を書き換える。`DECISIONS.md` D-35
 
 ### 追跡していない Pi 拡張
 

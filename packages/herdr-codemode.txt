@@ -1,0 +1,8 @@
+# 参考先のherdr-codemode Pi extensionを、repo外のcheckoutからlocal Pi packageとして読む。
+# 参考先にlicenseが無いため中身はこのrepoへ写さない。commitを固定し、上げるときは差分を読んでから書き換える。
+repo=https://github.com/dmmulroy/.dotfiles
+commit=4b4d38a4130650bd92783f173691e9e58901e708
+# npm workspaceのroot。lockfileはここにある。
+workspace=home/.pi
+# Pi packageとして登録するdirectory。
+package=home/.pi/agent/extensions/herdr-codemode

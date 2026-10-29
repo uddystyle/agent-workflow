@@ -36,6 +36,13 @@ function scan(payload: unknown): Promise<ScanResult> {
   });
 }
 
+function stringsOf(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsOf);
+  if (value !== null && typeof value === "object") return Object.values(value).flatMap(stringsOf);
+  return [];
+}
+
 export default function (pi: any) {
   let lastDenied: { tool: string; rules: string[] } | undefined;
 
@@ -55,9 +62,11 @@ export default function (pi: any) {
 
   pi.on("tool_call", async (event: any) => {
     const input = event.input ?? {};
+    // herdr_* はpaneへ文字を送り、bashを通らずにコマンドを走らせられる。引数の文字列をすべてコマンドとして走査する。
     const text = event.toolName === "write" ? input.content
       : event.toolName === "edit" ? input.edits?.map((edit: any) => edit.newText).join("\n")
       : event.toolName === "bash" ? input.command
+      : event.toolName?.startsWith("herdr_") ? stringsOf(input).join("\n")
       : undefined;
     if (typeof text !== "string" || text.length === 0) return;
 

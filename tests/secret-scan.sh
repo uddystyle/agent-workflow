@@ -104,6 +104,30 @@ assert.equal(result, undefined);
 NODE
 passed=$((passed + 1))
 
+# herdr-codemodeのherdr_*はpaneへ文字を送る。bashを迂回させず、入れ子の文字列まで走査する。
+if ! REPO="$repo" node --experimental-strip-types --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+
+const extension = await import(`${process.env.REPO}/home/.pi/agent/extensions/secret-scan.ts`);
+let toolHandler;
+extension.default({
+  on(name, handler) { if (name === "tool_call") toolHandler = handler; },
+  registerCommand() {},
+});
+const key = `sk_live_${"A".repeat(25)}`;
+const sent = await toolHandler({ toolName: "herdr_panes_sendText", input: { paneId: "p1", text: `echo ${key}\n` } });
+assert.equal(sent?.block, true);
+assert.equal(sent.reason.includes(key), false);
+const nested = await toolHandler({ toolName: "herdr_panes_sendInput", input: { paneId: "p1", parts: [{ text: key }] } });
+assert.equal(nested?.block, true);
+assert.equal(await toolHandler({ toolName: "herdr_panes_sendText", input: { paneId: "p1", text: "pnpm test\n" } }), undefined);
+assert.equal(await toolHandler({ toolName: "herdr_session_snapshot", input: {} }), undefined);
+NODE
+then
+	fail 'herdr_* の送信を走査しない'
+fi
+passed=$((passed + 1))
+
 # 誤検知は、人が明示記録する。値やコマンド本文は state に残さない。
 if ! REPO="$repo" STATE_HOME="$tmp/state" node --experimental-strip-types --input-type=module <<'NODE'
 import assert from "node:assert/strict";

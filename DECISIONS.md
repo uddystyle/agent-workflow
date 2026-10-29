@@ -731,3 +731,30 @@ server、watcher、人が残すよう依頼したtaskはpersistentであり、�
 
 人の依頼により、Supabase専用のPi確認拡張とmigration skillを削除する。repo所有の配信linkは`install.sh`で撤去し、実体・別管理linkは残す。
 Supabaseの実行にこのrepo独自の環境記録・dry-run判定・確認UIは介在しない。秘密スキャンのSupabaseキー検出は維持する。
+
+## D-35 herdr-codemodeをrepo外のlocal Pi packageとして採用する
+
+人の依頼により、参考先`dmmulroy/.dotfiles` commit `4b4d38a`のherdr-codemode Pi extensionを採用する。
+codemodeのscriptから`@herdr/sdk`の操作を`tools.herdr_*`として呼べるようにし、pane作成・送信・待機・読取りを1回の呼出しにまとめる。
+
+参考先にはlicenseが無いため、中身をこのrepoへ写さない。`./dot init/update`は`packages/herdr-codemode.txt`の固定commitを
+`${XDG_DATA_HOME:-~/.local/share}/agent-workflow/herdr-codemode`へ取得し、lockfileどおり`npm ci --ignore-scripts`で依存を入れ、
+extension directoryをlocal Pi packageとして登録し、`defaultTools`へcodemodeを足す。取得先に手の変更があれば止まる。
+commitを上げるときは、参考先の差分を読んでからmanifestを書き換える。
+
+**理由**: Piのgit sourceはrepository単位で、subdirectoryを指定できない。参考先のrootにはPi packageの宣言が無い。
+`home/`の下へ置くとStowが`node_modules`を1本ずつ張り、license上の再配布にもなる。repo外のcheckoutならどちらも避けられる。
+
+**同時に変えたもの**:
+
+- `secret-scan`は`herdr_*`の引数の文字列をすべてコマンドとして走査する。`herdr_panes_sendText`などはbashを通らずにpaneでコマンドを走らせられる。
+- herdr skillへcodemode節を足す。参考先の道具説明はpane splitと`idle`での待機を例に出すが、D-31のtab規律と、待機結果を完了の根拠にしない規律が優先する。
+- 参考先が同時に行ったherdr skillの`disable-model-invocation: true`は採らない。別skillがHerdrを要求したときの発火（Herdr skillの発火条件）とCLI手順を残す。
+
+**選ばなかった案**:
+
+- **vendorしたSDKごとrepoへ写す** —— licenseが無く、公開repoで再配布できない。
+- **`@herdr/sdk`のnpm公開を待って自前で書き直す** —— 2026-10-30時点で`herdr-sdk`は`0.0.0`の仮置きだけで、公開時期が分からない。公開後に置き換えを再検討する。
+
+SDKはHerdr 0.9.5のprotocolに対応する。Herdr本体だけを上げると`HerdrUnsupportedProtocol`で止まりうるため、Herdrを上げるときは固定commitも見直す。
+`doctor`は取得・依存・登録・codemode有効を見るが、Piが実際に読み込めたかは見られない。

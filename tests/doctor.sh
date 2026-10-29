@@ -346,6 +346,46 @@ else
 	skip "Pi package設定（pi、settings、またはmanifestが無い）"
 fi
 
+# 10b. herdr-codemodeが固定commitで取得・依存導入・登録され、codemodeが有効か。D-35
+codemode_manifest="$repo/packages/herdr-codemode.txt"
+codemode_checkout="${XDG_DATA_HOME:-$HOME/.local/share}/agent-workflow/herdr-codemode"
+if command -v pi >/dev/null 2>&1 && [ -r "$pi_settings" ] && [ -r "$codemode_manifest" ]; then
+	codemode_commit=$(sed -n 's/^commit=//p' "$codemode_manifest" | head -n 1)
+	codemode_workspace=$(sed -n 's/^workspace=//p' "$codemode_manifest" | head -n 1)
+	codemode_package=$(sed -n 's/^package=//p' "$codemode_manifest" | head -n 1)
+	if [ "$(git -C "$codemode_checkout" rev-parse HEAD 2>/dev/null)" != "$codemode_commit" ]; then
+		warn "herdr-codemodeの取得先が固定commitに無い。./dot initで取得する"
+	elif [ ! -d "$codemode_checkout/$codemode_workspace/node_modules" ]; then
+		warn "herdr-codemodeの依存が入っていない。./dot initで導入する"
+	elif PI_SETTINGS_FILE="$pi_settings" CODEMODE_PACKAGE="$codemode_checkout/$codemode_package" python3 - <<'PY'
+import json, os, pathlib, sys
+settings_path = pathlib.Path(os.environ["PI_SETTINGS_FILE"])
+try:
+    settings = json.loads(settings_path.read_text())
+except (OSError, ValueError):
+    sys.exit(1)
+expected = os.path.realpath(os.environ["CODEMODE_PACKAGE"])
+sources = [
+    value if isinstance(value, str) else value.get("source") if isinstance(value, dict) else None
+    for value in settings.get("packages", [])
+]
+registered = any(
+    isinstance(source, str)
+    and os.path.realpath(os.path.join(settings_path.parent, os.path.expanduser(source))) == expected
+    for source in sources
+)
+tools = settings.get("defaultTools") or []
+sys.exit(0 if registered and ("codemode" in tools or "+codemode" in tools) else 1)
+PY
+	then
+		ok "herdr-codemodeは固定commitでPiに登録され、codemodeが有効"
+	else
+		warn "herdr-codemodeがPi packageに無いか、codemodeが無効。./dot initで登録する"
+	fi
+else
+	skip "herdr-codemode（pi、settings、またはmanifestが無い）"
+fi
+
 # 11. Piがrepo管理のEverforest themeを選んでいるか。
 pi_theme="$HOME/.pi/agent/themes/everforest.json"
 if [ -r "$pi_settings" ] && [ -r "$pi_theme" ]; then

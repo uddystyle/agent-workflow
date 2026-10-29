@@ -205,6 +205,16 @@ Use `--format ansi` when colors and terminal styling are evidence. Otherwise use
 
 After that failed read, ask the agent to write its complete response as Markdown in a temporary directory and reply only with the file path, then read the file directly. Use this only as a fallback; do not request file output in the initial prompt.
 
+## Use Herdr from codemode
+
+When codemode lists `herdr_search`, the `herdr_*` tools call the same server as the CLI. This skill's rules still apply; the examples in the tool instructions do not override them:
+
+- Start short-lived work with `herdr_tabs_create` and use the returned tab and root pane IDs. Call `herdr_panes_split` only when the user explicitly requests a split.
+- `{ timedOut: false }` from `herdr_agents_wait` or `herdr_panes_waitForOutput` reports a lifecycle state or a matched line, not completed work. Read the result with `herdr_agents_read` or `herdr_panes_read` and verify it before treating the task as done or closing its tab.
+- `{ timedOut: true }`, `HerdrRequestTimeout`, `agent_prompt_stalled`, and `blocked` leave the tab open. Inspect state before retrying.
+- Tools that search results mark `destructive` follow the close rules below: only what this invocation created, unless the user explicitly asked.
+- Search, describe, and call in one script, and return only the evidence the next decision needs.
+
 ## Safety and coordination rules
 
 - Use `--no-focus` for background work unless the user asked to switch context.

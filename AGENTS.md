@@ -56,8 +56,9 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
   `stow` 無しでは `home/.config/herdr/config.toml` を張らない。`install.sh:80-113`, `tests/install.sh:124-140`
 - `home/.pi/agent/*` は`.gitignore`で制御され、列挙した設定だけを復元する。`.gitignore:12-27`
 - 外部MCP serverは管理せず、host設定探索・sampling・elicitation・auto auth・script modeを止める。browser診断はBashから始める。`home/.pi/agent/mcp.json`, `tests/doctor.sh`, `DECISIONS.md`
-- `secret-scan` は `write`/`edit`/`bash` を走査し、拒否時は `denied`。
-  `home/.pi/agent/extensions/secret-scan.ts:1-50`, `tests/secret-scan.sh:16-31`
+- `secret-scan` は `write`/`edit`/`bash` と `herdr_*` の引数を走査し、拒否時は `denied`。
+  `home/.pi/agent/extensions/secret-scan.ts`, `tests/secret-scan.sh`
+- herdr-codemode は repo へ写さない。`dot init/update` が `packages/herdr-codemode.txt` の固定commitを repo外へ取得し、local Pi packageとして登録して codemode を有効にする。`DECISIONS.md` D-35
 - sub-agentは同一Herdr workspaceの新規tabで起動する。pane splitは人が明示した場合だけにし、短命tabは結果確認後に作成者が閉じる。blocked・timeout・failedはtabを残す。
   原因不明のbugは`home/.agents/skills/diagnosing-bugs/SKILL.md`でred-capable loopを先に作る。codeの追加・renameでは
   `home/.agents/skills/write-discoverable-code/SKILL.md`のplain-text search規律を適用する。

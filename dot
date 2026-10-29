@@ -34,14 +34,8 @@ trust_brew_formulae() {
  brew trust --formula plannotator/tap/plannotator-tui
 }
 
-ensure_pi_packages() {
- need pi; need python3
- local source settings="$HOME/.pi/agent/settings.json"
- while IFS= read -r source || [ -n "$source" ]; do
-  source=${source%%#*}
-  source=${source//[[:space:]]/}
-  [ -n "$source" ] || continue
-  if ! PI_PACKAGE_SOURCE="$source" PI_SETTINGS="$settings" python3 - <<'PY'
+pi_package_configured() {
+ PI_PACKAGE_SOURCE="$1" PI_SETTINGS="$HOME/.pi/agent/settings.json" python3 - <<'PY'
 import json, os, pathlib, sys
 path = pathlib.Path(os.environ["PI_SETTINGS"])
 try:
@@ -49,16 +43,74 @@ try:
 except (OSError, ValueError):
     sys.exit(1)
 source = os.environ["PI_PACKAGE_SOURCE"]
+# Piはlocal packageをsettingsからの相対pathで記録するため、pathはsettingsの位置から解決して比べる。
+def resolve(value):
+    if value.startswith(("/", ".", "~")):
+        return os.path.realpath(os.path.join(path.parent, os.path.expanduser(value)))
+    return value
 for package in packages:
     configured = package if isinstance(package, str) else package.get("source") if isinstance(package, dict) else None
-    if configured == source:
+    if isinstance(configured, str) and resolve(configured) == resolve(source):
         sys.exit(0)
 sys.exit(1)
 PY
-  then
-   pi install "$source"
-  fi
+}
+
+ensure_pi_packages() {
+ need pi; need python3
+ local source
+ while IFS= read -r source || [ -n "$source" ]; do
+  source=${source%%#*}
+  source=${source//[[:space:]]/}
+  [ -n "$source" ] || continue
+  pi_package_configured "$source" || pi install "$source"
  done <"$repo/packages/pi-packages.txt"
+}
+
+manifest_value() {
+ sed -n "s/^$2=//p" "$1" | head -n 1
+}
+
+# herdr-codemodeはrepo外へ取得し、固定commitのlocal Pi packageとして登録する。D-35
+ensure_herdr_codemode() {
+ need git; need npm; need pi; need python3
+ local manifest="$repo/packages/herdr-codemode.txt" source commit workspace package checkout
+ source=$(manifest_value "$manifest" repo)
+ commit=$(manifest_value "$manifest" commit)
+ workspace=$(manifest_value "$manifest" workspace)
+ package=$(manifest_value "$manifest" package)
+ checkout="${XDG_DATA_HOME:-$HOME/.local/share}/agent-workflow/herdr-codemode"
+ if [ ! -d "$checkout/.git" ]; then
+  git clone --quiet --filter=blob:none "$source" "$checkout"
+ fi
+ [ -z "$(git -C "$checkout" status --porcelain)" ] || {
+  printf 'herdr-codemodeの取得先に手の変更がある。確認してから戻す: %s\n' "$checkout" >&2
+  return 1
+ }
+ if [ "$(git -C "$checkout" rev-parse HEAD)" != "$commit" ]; then
+  git -C "$checkout" fetch --quiet origin
+  git -C "$checkout" checkout --quiet --detach "$commit"
+  rm -rf "${checkout:?}/$workspace/node_modules"
+ fi
+ [ -d "$checkout/$workspace/node_modules" ] || npm ci --prefix "$checkout/$workspace" --ignore-scripts --no-audit --no-fund
+ pi_package_configured "$checkout/$package" || pi install "$checkout/$package"
+ # herdr_* はcodemodeのscriptからだけ呼べる。既存のdefaultToolsは保ち、codemodeだけを足す。
+ PI_SETTINGS="$HOME/.pi/agent/settings.json" python3 - <<'PY'
+import json, os, pathlib
+path = pathlib.Path(os.environ["PI_SETTINGS"])
+settings = json.loads(path.read_text()) if path.exists() else {}
+tools = settings.get("defaultTools")
+if tools is None:
+    settings["defaultTools"] = ["+codemode"]
+elif "codemode" in tools or "+codemode" in tools:
+    raise SystemExit(0)
+else:
+    tools.append("+codemode" if all(tool.startswith(("+", "-")) for tool in tools) else "codemode")
+path.parent.mkdir(parents=True, exist_ok=True)
+temp = path.with_name(path.name + ".tmp")
+temp.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\n")
+temp.replace(path)
+PY
 }
 
 integrations() {
@@ -89,6 +141,7 @@ case "${1:-help}" in
      npm install -g --ignore-scripts @earendil-works/pi-coding-agent
     fi
     ensure_pi_packages
+    ensure_herdr_codemode
     stow_config
     integrations
     ;;
@@ -101,6 +154,7 @@ case "${1:-help}" in
     brew bundle install --file="$repo/packages/Brewfile"
     ensure_pi_packages
     pi update --all
+    ensure_herdr_codemode
     stow_config
     integrations
     ;;

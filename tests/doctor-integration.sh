@@ -109,9 +109,10 @@ check_default_model ready 'OK   Pi のdefault provider/modelはcatalogに存在�
 check_default_model missing 'WARN Pi のdefault provider/modelがcatalogに無い'
 check_default_model unreadable 'WARN Pi のmodel catalogを読めない'
 printf '%s\n' '{"defaultProvider":"alpha","theme":"everforest","packages":["npm:pi-web-access"]}' >"$tmp/.pi/agent/settings.json"
-out=$(env HOME="$tmp" PATH="$tmp/model-bin:$PATH" "$doctor_repo/tests/doctor.sh" 2>&1)
+out=$(env -u XDG_DATA_HOME HOME="$tmp" PATH="$tmp/model-bin:$PATH" "$doctor_repo/tests/doctor.sh" 2>&1)
 [[ $out == *'管理対象のPi packagesは設定済み'* ]] || fail '管理対象のPi packageを確認しなかった'
 [[ $out == *'Piはrepo管理のEverforest themeを使う'* ]] || fail 'PiのEverforest themeを確認しなかった'
+[[ $out == *'WARN herdr-codemodeの取得先が固定commitに無い'* ]] || fail 'herdr-codemodeの未取得を指摘しなかった'
 rm "$tmp/.pi/agent/settings.json"
 
 # canonical root は bare repository を .git から参照する。doctor は bare root や
