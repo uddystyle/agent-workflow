@@ -710,7 +710,11 @@ sub-agentは同一Herdr workspaceの新規tabで起動する。pane splitは人�
 parentが中断した場合もcleanupを試みない。blocked、timeout、stalled、失敗、または結果未確認のtabは残し、IDと観測状態を人へ報告する。
 server、watcher、人が残すよう依頼したtaskはpersistentであり、自動回収しない。
 
-## D-32 Jevによる判断は手動起動・失敗時のみ試行する
+## D-32 Jevによる判断は手動起動・失敗時のみ試行する（退役）
+
+人の依頼により`decision-assisted-implementation`とJev用スクリプト・専用テストを削除した。
+通常の実装・検証と、必要時の`worktrees`を使い、Jevを介する手順は残さない。
+repo所有の配信linkは`install.sh`で撤去し、実体・別管理linkは残す。以下は導入時の履歴であり、復元の指示ではない。
 
 `decision-assisted-implementation`を人が呼んだ場合に限り、Piが差分と関連チェックを確認した後、方針が割れた時だけJevへ外部送信を承認した要約を渡す。Jevは次の行動を提案し、検証や完了判定はPiと実行ツールが担う。
 
@@ -732,7 +736,9 @@ server、watcher、人が残すよう依頼したtaskはpersistentであり、�
 人の依頼により、Supabase専用のPi確認拡張とmigration skillを削除する。repo所有の配信linkは`install.sh`で撤去し、実体・別管理linkは残す。
 Supabaseの実行にこのrepo独自の環境記録・dry-run判定・確認UIは介在しない。秘密スキャンのSupabaseキー検出は維持する。
 
-## D-35 herdr-codemodeをrepo外のlocal Pi packageとして採用する
+## D-35 herdr-codemodeをrepo外のlocal Pi packageとして採用する（退役）
+
+人の依頼により導入を撤去した。現在の方針はD-37を参照し、以下は履歴として扱う。
 
 人の依頼により、参考先`dmmulroy/.dotfiles` commit `4b4d38a`のherdr-codemode Pi extensionを採用する。
 codemodeのscriptから`@herdr/sdk`の操作を`tools.herdr_*`として呼べるようにし、pane作成・送信・待機・読取りを1回の呼出しにまとめる。
@@ -758,3 +764,22 @@ commitを上げるときは、参考先の差分を読んでからmanifestを書
 
 SDKはHerdr 0.9.5のprotocolに対応する。Herdr本体だけを上げると`HerdrUnsupportedProtocol`で止まりうるため、Herdrを上げるときは固定commitも見直す。
 `doctor`は取得・依存・登録・codemode有効を見るが、Piが実際に読み込めたかは見られない。
+
+## D-36 未使用のHerdr skillを退役する
+
+人がHerdrを使っていないため、`herdr` skillと`worktrees`のHerdr起動手順、現在の案内にあるskill参照・sub-agent起動規則を削除する。
+`install.sh`の同梱skill移行例外も廃止し、退役したrepo所有linkだけを撤去する。実体・別管理linkは残す。
+以前のHerdr skillに関する判断とD-31の起動規則は履歴であり、復元や呼び出しの指示として扱わない。
+Herdr本体・設定・herdr-codemode・plannotator-tuiなど、skill以外の連携は今回の撤去対象に含めない。
+
+## D-37 未使用のherdr-codemodeを撤去する
+
+人の依頼により、herdr-codemodeのmanifest、取得・依存導入・Pi登録処理、専用診断とその案内を削除する。
+導入済みのlocal Pi package登録と、手の変更が無いrepo外の専用checkoutも撤去する。
+Pi標準のcodemodeと既存のdefaultTools設定は残す。`herdr_*`への秘密スキャンも、残る道具の安全境界として維持する。
+
+## D-38 HerdrのPi状態通知extensionを撤去する
+
+人の依頼により、Herdrが導入した`~/.pi/agent/extensions/herdr-agent-state.ts`を
+`herdr integration uninstall pi`で撤去する。`dot init/update`からもPi連携の再導入を外す。
+Piの他のextension、秘密スキャン、Herdr本体・設定・plugin、他CLIの連携は今回の対象に含めない。

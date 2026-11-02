@@ -9,7 +9,8 @@ r = Path(os.environ['REPO'])
 def text(p): return (r / p).read_text()
 retired = ['code-review', 'coding-standards', 'domain-modeling', 'grill-me',
            'grill-with-docs', 'grilling', 'prototype', 'research', 'tdd',
-           'cloudflare-composition-root', 'two-axis-review', 'supabase-migrations']
+           'cloudflare-composition-root', 'two-axis-review', 'supabase-migrations',
+           'decision-assisted-implementation', 'herdr']
 for name in retired:
     assert not (r / 'home/.agents/skills' / name).exists(), name
     for doc in ['AGENTS.md', 'README.md']:
@@ -17,14 +18,7 @@ for name in retired:
         assert f'home/.agents/skills/{name}/' not in text(doc)
 assert not (r / 'home/.pi/agent/skills').exists()
 assert 'disable-model-invocation: true' not in text('home/.agents/skills/worktrees/SKILL.md')
-herdr = text('home/.agents/skills/herdr/SKILL.md')
-assert 'another skill explicitly asks for or requires them' in herdr
-assert 'Start and coordinate an agent' in herdr
-assert 'Default to a new tab in the current workspace' in herdr
-assert 'herdr tab create' in herdr and 'herdr tab close' in herdr
-assert 'only when the user explicitly requests a split' in herdr
-assert 'Start short-lived work with `herdr_tabs_create`' in herdr
-assert 'not completed work' in herdr
+assert 'herdr' not in text('home/.agents/skills/worktrees/SKILL.md').lower()
 plannotator = text('home/.agents/skills/plannotator-tui/SKILL.md')
 assert 'name: plannotator-tui' in plannotator
 assert 'disable-model-invocation: true' in plannotator
@@ -57,8 +51,7 @@ for p in ['home/.pi/agent/skills/implement/SKILL.md', 'home/.agents/skills/cua-d
            'home/.pi/agent/agents/standards.md', 'home/.pi/agent/agents/spec.md']:
     assert not (r / p).exists(), p
 for p in (r / 'home/.agents/skills').glob('*/SKILL.md'):
-    if p.parent.name != 'herdr':
-        assert p.stat().st_size <= 10240, p
+    assert p.stat().st_size <= 10240, p
 print('PASS remaining skills and retirement contracts')
 PY
 bash -n "$repo/home/.agents/skills/diagnosing-bugs/scripts/hitl-loop.template.sh"

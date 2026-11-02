@@ -50,7 +50,7 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 ## Conventions
 
 - skill の唯一の正本は `home/.agents/skills/`。`install.sh` は `home/` をStowして `~/.agents/skills/` へ置く。
-  Pi はglobal discoveryで読むため、`~/.pi/agent/skills/` へは配らない。既存配下が実体なら止める。Herdr同梱skillだけは、repo版とdescription以外が一致するときにrepo管理へ移す。
+  Pi はglobal discoveryで読むため、`~/.pi/agent/skills/` へは配らない。既存配下が実体なら止める。
   `install.sh:12-18`, `install.sh:58-105`
 - `home/` は `stow --no-folding` を前提に張る。
   `stow` 無しでは `home/.config/herdr/config.toml` を張らない。`install.sh:80-113`, `tests/install.sh:124-140`
@@ -58,13 +58,11 @@ git log cbe7653a..HEAD -- AGENTS.md README.md dot packages install.sh tests DECI
 - 外部MCP serverは管理せず、host設定探索・sampling・elicitation・auto auth・script modeを止める。browser診断はBashから始める。`home/.pi/agent/mcp.json`, `tests/doctor.sh`, `DECISIONS.md`
 - `secret-scan` は `write`/`edit`/`bash` と `herdr_*` の引数を走査し、拒否時は `denied`。
   `home/.pi/agent/extensions/secret-scan.ts`, `tests/secret-scan.sh`
-- herdr-codemode は repo へ写さない。`dot init/update` が `packages/herdr-codemode.txt` の固定commitを repo外へ取得し、local Pi packageとして登録して codemode を有効にする。`DECISIONS.md` D-35
-- sub-agentは同一Herdr workspaceの新規tabで起動する。pane splitは人が明示した場合だけにし、短命tabは結果確認後に作成者が閉じる。blocked・timeout・failedはtabを残す。
-  原因不明のbugは`home/.agents/skills/diagnosing-bugs/SKILL.md`でred-capable loopを先に作る。codeの追加・renameでは
+- 原因不明のbugは`home/.agents/skills/diagnosing-bugs/SKILL.md`でred-capable loopを先に作る。codeの追加・renameでは
   `home/.agents/skills/write-discoverable-code/SKILL.md`のplain-text search規律を適用する。
   skillの発火・router規律は`home/.agents/skills/writing-for-agents/SKILL-MECHANICS.md`に置く。
 - 参考先で削除されたskillは復元しない。退役済みskillのrepo所有linkは`install.sh`で撤去し、実体・別管理linkは残す。`DECISIONS.md` D-33
-- worktree は `home/.agents/skills/worktrees/SKILL.md` をモデルからも呼べる。作成と Herdr tab 起動は別操作。
+- worktree は `home/.agents/skills/worktrees/SKILL.md` をモデルからも呼べる。作成と別agentの起動は別操作。
 - `dot init/update` は依存導入・ネットワーク・HOME変更を伴う。Pi packageは`packages/pi-packages.txt`から導入する。検査は`tests/bootstrap.sh`の偽コマンドと一時HOMEを使う。
 
 ## Boundaries and anti-patterns

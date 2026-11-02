@@ -38,21 +38,9 @@ git worktree list --verbose
 
 **完了条件**: 想定した path と branch が `git worktree list` にあり、作業対象がその worktree になっている。
 
-## 3. 必要な場合だけ Herdr で編集 agent を起動する
+worktree の作成は、別 agent の起動を意味しない。現在の agent で対象へ移動して作業できる。
 
-worktree の作成は、新しい tab や agent の起動を意味しない。現在の agent で対象へ移動して作業できる。
-別 agent の起動も依頼された場合だけ、Herdr skill で現在の CLI を確認し、対象 worktree を cwd にする。
-
-```sh
-herdr tab create --workspace <ws> --label "<観点>" --cwd <worktree-path>
-herdr agent start <観点> --kind <種類> --pane <返ってきた pane>
-```
-
-短命のread-only agentなら、作成者はHerdr skillのephemeral tab lifecycleに従い、結果確認後に作成tabを閉じる。writer、長時間task、人が残すよう依頼したagentは自動で閉じない。
-
-**完了条件**: `herdr agent get <観点>` の cwd が意図した worktree を指す。
-
-## 4. 片付ける
+## 3. 片付ける
 
 変更を確認してから Git 経由で削除する。
 

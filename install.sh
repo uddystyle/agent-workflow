@@ -35,7 +35,7 @@ link_points_to() {
 }
 
 # 削除済みskillの配信linkを、sourceが消えた後も所有元のpathで判定して撤去する。
-retired_skills=(code-review coding-standards domain-modeling grill-me grill-with-docs grilling prototype research tdd cloudflare-composition-root two-axis-review supabase-migrations)
+retired_skills=(code-review coding-standards domain-modeling grill-me grill-with-docs grilling prototype research tdd cloudflare-composition-root two-axis-review supabase-migrations decision-assisted-implementation herdr)
 remove_retired_skill_links() {
 	local dest=$1 name=$2 link actual
 	if [ -L "$dest" ]; then
@@ -105,29 +105,6 @@ while IFS= read -r src; do
 		blocked=$((blocked + 1))
 	fi
 done < <(find "$repo/home/.agents/skills" -mindepth 1 -maxdepth 1 -type d | sort)
-
-# Herdr同梱skillが実体としてある場合は、本文が同一のときだけStowへ明け渡す。
-herdr_dest="$stow_target/.agents/skills/herdr"
-herdr_src="$repo/home/.agents/skills/herdr/SKILL.md"
-if [ -d "$herdr_dest" ] && [ ! -L "$herdr_dest" ] && [ -f "$herdr_dest/SKILL.md" ]; then
-	if [ "$(find "$herdr_dest" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = 1 ] && \
-		python3 - "$herdr_dest/SKILL.md" "$herdr_src" <<'PY'
-from pathlib import Path
-import sys
-
-installed = Path(sys.argv[1]).read_text()
-managed = Path(sys.argv[2]).read_text()
-upstream = 'description: "Control Herdr, a terminal multiplexer for coding agents. Use only when the user explicitly mentions Herdr or asks to use Herdr to inspect or control panes, tabs, workspaces, commands, or another agent. Do not use merely because a task could benefit from a background terminal, delegation, or parallel work. Requires HERDR_ENV=1."'
-reference = 'description: "Control Herdr panes, tabs, workspaces, commands, dev servers, other background processes, and agents. Use for subagents when the user or another skill explicitly asks for or requires them. Requires HERDR_ENV=1."'
-if installed.count(upstream) != 1 or managed.count(reference) != 1:
-    raise SystemExit(1)
-raise SystemExit(0 if installed.replace(upstream, reference) == managed else 1)
-PY
-	then
-		rm -rf "$herdr_dest"
-		printf 'MOVE herdr 同梱 skill を repo 管理版へ移す\n'
-	fi
-fi
 
 # home/ の設定を Stow で張る。--no-folding はruntime stateをrepoへ入れないために必要。
 if ! command -v stow >/dev/null 2>&1; then

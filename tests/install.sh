@@ -59,7 +59,7 @@ case_legacy_shared_skill_migration() {
 
 case_retired_skill_links() {
 	local d="$tmp/retired-skills" name global pi nested foreign
-	for name in code-review coding-standards domain-modeling grill-with-docs grilling prototype research tdd two-axis-review supabase-migrations; do
+	for name in code-review coding-standards domain-modeling grill-with-docs grilling prototype research tdd two-axis-review supabase-migrations decision-assisted-implementation herdr; do
 		global="$d/home/.agents/skills/$name"
 		pi="$d/home/.pi/agent/skills/$name"
 		mkdir -p "$global" "$(dirname "$pi")"
@@ -80,7 +80,7 @@ PY
 	ln -s "$repo/skills/grill-me" "$d/home/.agents/skills/grill-me"
 	ln -s "$repo/home/.agents/skills/cloudflare-composition-root" "$d/home/.agents/skills/cloudflare-composition-root"
 	run_install "$d" bash >/dev/null
-	for name in code-review coding-standards domain-modeling grill-me grill-with-docs grilling prototype research tdd cloudflare-composition-root two-axis-review supabase-migrations; do
+	for name in code-review coding-standards domain-modeling grill-me grill-with-docs grilling prototype research tdd cloudflare-composition-root two-axis-review supabase-migrations decision-assisted-implementation herdr; do
 		for global in "$d/home/.agents/skills/$name" "$d/home/.pi/agent/skills/$name"; do
 			[ ! -e "$global" ] && [ ! -L "$global" ] || fail "退役skillが残った: $global"
 		done
